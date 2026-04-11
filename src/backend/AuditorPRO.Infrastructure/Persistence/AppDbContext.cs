@@ -22,6 +22,11 @@ public class AppDbContext : DbContext
     public DbSet<LogConector> LogsConector => Set<LogConector>();
     public DbSet<Politica> Politicas => Set<Politica>();
     public DbSet<BitacoraEvento> Bitacora => Set<BitacoraEvento>();
+    public DbSet<RolSistema> RolesSistema => Set<RolSistema>();
+    public DbSet<AsignacionRolUsuario> AsignacionesRol => Set<AsignacionRolUsuario>();
+    public DbSet<ConflictoSoD> ConflictosSoD => Set<ConflictoSoD>();
+    public DbSet<MatrizPuestoRol> MatrizPuestoRol => Set<MatrizPuestoRol>();
+    public DbSet<BaseConocimiento> BaseConocimiento => Set<BaseConocimiento>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -49,6 +54,8 @@ public class AppDbContext : DbContext
             e.HasKey(x => x.Id);
             e.HasIndex(x => new { x.Estado, x.IniciadaAt });
             e.HasQueryFilter(x => !x.IsDeleted);
+            e.Property(x => x.ScoreMadurez).HasPrecision(4, 2);
+            e.Property(x => x.PorcentajeCumplimiento).HasPrecision(5, 2);
         });
 
         modelBuilder.Entity<ResultadoControl>(e =>

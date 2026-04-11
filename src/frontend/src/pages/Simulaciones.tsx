@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { getSimulaciones, iniciarSimulacion, cancelarSimulacion, type SimulacionListDto } from '../api/simulaciones';
 import { toast } from 'sonner';
-import { PlayCircle, XCircle } from 'lucide-react';
+import { PlayCircle, XCircle, ChevronRight } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 
 const estadoColor: Record<string, string> = {
@@ -17,6 +18,7 @@ export function Simulaciones() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const { register, handleSubmit, reset } = useForm();
+  const navigate = useNavigate();
 
   const load = () => {
     getSimulaciones()
@@ -114,7 +116,7 @@ export function Simulaciones() {
             </thead>
             <tbody className="divide-y">
               {items.map((s) => (
-                <tr key={s.id} className="hover:bg-gray-50">
+                <tr key={s.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => navigate(`/simulaciones/${s.id}`)}>
                   <td className="px-4 py-3 font-medium text-gray-800">{s.nombre}</td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${estadoColor[s.estado] ?? 'bg-gray-100'}`}>
@@ -126,11 +128,14 @@ export function Simulaciones() {
                   <td className="px-4 py-3 text-red-600 font-medium">{s.controlesRojo ?? '—'}</td>
                   <td className="px-4 py-3 text-gray-500">{new Date(s.iniciadaAt).toLocaleDateString('es-CR')}</td>
                   <td className="px-4 py-3">
-                    {s.estado === 'PENDIENTE' || s.estado === 'EN_PROCESO' ? (
-                      <button onClick={() => cancelar(s.id)} className="text-red-500 hover:text-red-700">
-                        <XCircle size={16} />
-                      </button>
-                    ) : null}
+                    <div className="flex items-center gap-2 justify-end">
+                      {(s.estado === 'PENDIENTE' || s.estado === 'EN_PROCESO') && (
+                        <button onClick={e => { e.stopPropagation(); cancelar(s.id); }} className="text-red-400 hover:text-red-700">
+                          <XCircle size={15} />
+                        </button>
+                      )}
+                      <ChevronRight size={14} className="text-gray-300" />
+                    </div>
                   </td>
                 </tr>
               ))}

@@ -1,7 +1,9 @@
-# AuditorPRO TI — Blueprint Maestro v1.0
+# AuditorPRO TI — Blueprint Maestro v1.1
 ### Plataforma Empresarial de Auditoría Preventiva Inteligente
 **Corporación ILG Logistics — Área de TI y Auditoría Interna**
-**Versión:** 1.0 | **Fecha:** Abril 2026 | **Clasificación:** Confidencial — Uso interno
+**Versión:** 1.1 | **Fecha:** Abril 2026 | **Clasificación:** Confidencial — Uso interno
+
+> **Cambios v1.1:** Se incorpora el módulo **Base de Conocimiento (RAG Local)** — ingesta de documentos de auditoría existentes para enriquecer simulaciones y el Agente IA con contexto organizacional real.
 
 ---
 
@@ -31,6 +33,7 @@
 18. [Gestión de Configuración y Ambientes](#18-gestión-de-configuración)
 19. [Arquitectura de Despliegue Azure](#19-arquitectura-de-despliegue-azure)
 20. [Checklist de Verificación Final](#20-checklist-de-verificación-final)
+21. [Base de Conocimiento — RAG Local](#21-base-de-conocimiento-rag-local)
 
 ---
 
@@ -2254,6 +2257,208 @@ RESULTADO: ✅ APROBADO PARA REVISIÓN Y APROBACIÓN POR JUAN SOLANO
 
 ---
 
+## 21. BASE DE CONOCIMIENTO — RAG LOCAL
+
+### ¿Qué es y por qué existe?
+
+El módulo de Base de Conocimiento permite alimentar al sistema con los **documentos de auditoría existentes** de la organización (reportes, políticas, expedientes, matrices, evaluaciones pasadas) para que el Agente IA los use como contexto real al responder consultas y ejecutar simulaciones.
+
+Sin este módulo, el Agente IA responde con conocimiento general de marcos normativos (ISO 27001, COBIT, etc.). **Con este módulo**, responde citando los documentos reales de ILG Logistics.
+
+### Principio técnico: RAG Local
+
+```
+Consulta al Agente IA
+        │
+        ▼
+Búsqueda en Base de Conocimiento
+(keyword scoring sobre texto extraído)
+        │
+        ▼
+Fragmentos relevantes encontrados
+        │
+        ▼
+Se incluyen en el prompt como contexto:
+"=== DOCUMENTOS DE AUDITORÍA RELEVANTES ===
+[Fuente: Reporte_Auditoria_2025.pdf | Dominio: SAP-SEC]
+...texto extraído del documento..."
+        │
+        ▼
+Azure OpenAI responde citando documentos reales
+```
+
+### Tipos de archivos soportados
+
+| Tipo | Extensión | Motor de extracción |
+|---|---|---|
+| PDF | `.pdf` | PdfPig (extracción página por página) |
+| Word | `.docx` | DocumentFormat.OpenXml (párrafos) |
+| Excel | `.xlsx` | DocumentFormat.OpenXml (celdas por hoja) |
+| CSV | `.csv` | Lectura directa texto plano |
+| Texto / Markdown | `.txt`, `.md` | Lectura directa |
+| Word legacy | `.doc` | No soportado (convertir a .docx) |
+
+### Modos de ingesta
+
+#### Modo 1: Directorio del servidor
+El administrador indica un path del servidor donde están almacenados los documentos. El sistema recorre el directorio recursivamente y procesa todos los archivos válidos.
+
+```
+POST /api/base-conocimiento/ingestir-directorio
+Body: { "rutaDirectorio": "/archivos/auditorias/2026" }
+```
+
+- Soporta subdirectorios (recursivo)
+- Omite automáticamente archivos ya indexados
+- Reporta: procesados / omitidos / errores
+
+#### Modo 2: Upload desde browser
+El usuario arrastra o selecciona archivos directamente desde su computadora.
+
+```
+POST /api/base-conocimiento/upload
+Content-Type: multipart/form-data
+```
+
+- Múltiples archivos en una sola carga
+- Máximo 100 MB total por operación
+
+### Clasificación automática
+
+Al ingestar cada documento, el sistema analiza su contenido y metadatos para asignar automáticamente:
+
+| Campo | Descripción | Ejemplo |
+|---|---|---|
+| `DominioDetectado` | Dominio de auditoría más relevante | `SAP-SEC`, `ID`, `CHG` |
+| `ControlesDetectados` | Códigos de control mencionados en el texto | `["ID-002","SAP-001"]` |
+| `Tags` | Palabras clave auditables encontradas | `["segregación","SAP_ALL","baja"]` |
+
+**Lógica de clasificación por dominio:**
+
+| Dominio | Palabras clave detectadas |
+|---|---|
+| ID | usuario, acceso, identidad, alta, baja, empleado, inactivo |
+| CHG | cambio, expediente, transporte, ticket, aprobación |
+| SAP-SEC | SAP, rol, perfil, SE38, SU01, RFC, transport |
+| RECERT | recertificación, campaña, validación, jefatura |
+| SoD | segregación, conflicto, incompatible |
+| EVID | evidencia, respaldo, documento, comprobante |
+| DOC | política, procedimiento, norma, lineamiento |
+| BCK | respaldo, backup, restauración, recovery |
+
+### Modelo de datos
+
+```sql
+-- TABLA: base_conocimiento
+CREATE TABLE base_conocimiento (
+    id                      UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    nombre_archivo          VARCHAR(500) NOT NULL,
+    ruta_original           VARCHAR(1000) NOT NULL,  -- path en servidor o 'UPLOAD'
+    tipo_archivo            VARCHAR(20) NOT NULL,     -- PDF, DOCX, XLSX, CSV, TXT
+    tamano_bytes            BIGINT,
+    texto_completo          NVARCHAR(MAX),           -- texto extraído (máx 500KB)
+    total_palabras          INT,
+    total_paginas           INT,
+    dominio_detectado       VARCHAR(50),
+    controles_detectados    NVARCHAR(MAX),           -- JSON array de códigos
+    tags                    NVARCHAR(MAX),           -- JSON array de palabras clave
+    estado                  VARCHAR(20) DEFAULT 'PROCESADO',  -- PROCESADO|ERROR|PENDIENTE
+    fuente_ingesta          VARCHAR(20) DEFAULT 'DIRECTORIO', -- DIRECTORIO|UPLOAD
+    ingresado_por           VARCHAR(200),
+    creado_at               DATETIME2 DEFAULT GETUTCDATE(),
+    is_deleted              BIT DEFAULT 0,
+    INDEX IX_bc_dominio (dominio_detectado, is_deleted),
+    INDEX IX_bc_fecha   (creado_at DESC)
+);
+```
+
+### Algoritmo de búsqueda (scoring)
+
+Sin vector DB, el sistema usa búsqueda por frecuencia de términos:
+
+```
+Score(documento, query) = Σ ocurrencias(término_i, texto_documento)
+                          para cada término de la query con longitud > 3
+
+Resultado: top-K documentos ordenados por score descendente
+Los K=4 más relevantes se incluyen como contexto en cada consulta IA
+```
+
+### API — Endpoints
+
+```
+GET    /api/base-conocimiento
+       ?dominio=SAP-SEC&busqueda=SAP_ALL&page=1&pageSize=20
+       → Lista paginada de documentos indexados
+
+POST   /api/base-conocimiento/ingestir-directorio
+       Body: { rutaDirectorio: string }
+       → Procesa todos los archivos del directorio
+
+POST   /api/base-conocimiento/upload
+       multipart/form-data: files[]
+       → Indexa archivos subidos directamente
+
+DELETE /api/base-conocimiento/{id}
+       → Soft delete del documento (no afecta análisis previos)
+
+GET    /api/base-conocimiento/buscar?q=SAP_ALL&topK=5
+       → Devuelve fragmentos relevantes (uso interno para IA)
+```
+
+### Integración con el Agente IA
+
+El handler `ConsultarIAHandler` enriquece automáticamente cada consulta:
+
+```csharp
+// 1. Buscar documentos relevantes
+var docsRelevantes = await _ingestor.BuscarAsync(pregunta, topK: 4);
+
+// 2. Construir contexto RAG
+if (docsRelevantes.Any())
+{
+    contexto += "=== DOCUMENTOS DE AUDITORÍA RELEVANTES ===\n";
+    foreach (var doc in docsRelevantes)
+    {
+        contexto += $"[Fuente: {doc.NombreArchivo} | Dominio: {doc.DominioDetectado}]\n";
+        contexto += doc.TextoCompleto[..800] + "\n";
+    }
+    contexto += "Cita estos documentos al responder.";
+}
+
+// 3. Llamar al modelo con contexto enriquecido
+var respuesta = await _iaService.ConsultarAsync(pregunta, contexto);
+```
+
+La respuesta incluye el campo `usoBaseConocimiento: true` y `fuentesConsultadas` con los nombres de los documentos usados.
+
+### Escenarios de prueba — Base de Conocimiento
+
+| # | Escenario | Resultado esperado |
+|---|---|---|
+| BC-01 | Ingestir directorio con 10 archivos mixtos (PDF, DOCX, XLSX) | 10 procesados, clasificación automática visible |
+| BC-02 | Directorio inexistente | Error: "El directorio no existe" |
+| BC-03 | PDF protegido con contraseña | Error controlado, resto del directorio continúa |
+| BC-04 | Mismo archivo ingestado dos veces | Segunda vez omitido (no duplicado) |
+| BC-05 | Consulta IA sobre control existente en documento indexado | Respuesta cita el documento por nombre |
+| BC-06 | Consulta IA sin documentos en la base | Responde con conocimiento general, sin error |
+| BC-07 | Upload de 5 archivos simultáneos | 5 indexados, resultado muestra detalle por archivo |
+| BC-08 | Eliminar documento | Soft delete, no aparece en lista, IA deja de usarlo |
+| BC-09 | Búsqueda por texto "SAP_ALL" | Retorna documentos que mencionan ese término |
+| BC-10 | Ingestir Excel con múltiples hojas | Texto de todas las hojas extraído y concatenado |
+
+### Limitaciones conocidas y evolución futura
+
+| Limitación actual | Evolución Fase 2 |
+|---|---|
+| Búsqueda por keyword (frecuencia) | Reemplazar con Azure AI Search (embeddings vectoriales) |
+| Máximo 500KB de texto por documento | Sin límite con Azure AI Search |
+| Sin OCR para PDFs escaneados | Azure AI Document Intelligence para OCR real |
+| Clasificación por reglas estáticas | Clasificación semántica con modelo de embeddings |
+| Sin deduplicación por contenido | Hash SHA-256 del texto para detectar duplicados |
+
+---
+
 ## APÉNDICE A: GLOSARIO
 
 | Término | Definición en contexto AuditorPRO |
@@ -2269,6 +2474,9 @@ RESULTADO: ✅ APROBADO PARA REVISIÓN Y APROBACIÓN POR JUAN SOLANO
 | **RAG** | Retrieval-Augmented Generation — técnica de IA que enriquece las respuestas con contexto recuperado de documentos reales |
 | **SoD** | Segregation of Duties (Segregación de Funciones) — principio que separa responsabilidades para reducir riesgo de fraude |
 | **Ledger Table** | Función de Azure SQL que hace la tabla criptográficamente verificable (inmutable para fines de auditoría) |
+| **Base de Conocimiento** | Repositorio de documentos de auditoría indexados y procesados para ser usados como contexto por el Agente IA |
+| **Ingesta** | Proceso de leer, extraer texto y clasificar un documento para incorporarlo a la Base de Conocimiento |
+| **Scoring RAG** | Algoritmo de puntuación por frecuencia de términos que determina qué documentos son más relevantes para una consulta |
 
 ---
 
@@ -2286,6 +2494,7 @@ RESULTADO: ✅ APROBADO PARA REVISIÓN Y APROBACIÓN POR JUAN SOLANO
 
 ---
 
-*AuditorPRO TI Blueprint Maestro v1.0*
+*AuditorPRO TI Blueprint Maestro v1.1*
 *Preparado para: Juan Solano — ILG Logistics — Área TI y Auditoría*
+*v1.1 — Abril 2026: Incorporación del módulo Base de Conocimiento (RAG Local) — Sección 21*
 *Este documento es el punto de partida para desarrollo. Validar con equipo técnico y auditores antes de iniciar construcción.*

@@ -11,10 +11,14 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructureServices(this IServiceCollection services, IConfiguration configuration)
     {
+        var connectionString = configuration.GetConnectionString("DefaultConnection") ?? "";
         services.AddDbContext<AppDbContext>(options =>
-            options.UseSqlServer(
-                configuration.GetConnectionString("DefaultConnection"),
-                sql => sql.EnableRetryOnFailure(3)));
+        {
+            if (connectionString.StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase))
+                options.UseSqlite(connectionString);
+            else
+                options.UseSqlServer(connectionString, sql => sql.EnableRetryOnFailure(3));
+        });
 
         // Repositories
         services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
@@ -27,6 +31,9 @@ public static class DependencyInjection
         services.AddScoped<IAzureOpenAIService, AzureOpenAIService>();
         services.AddScoped<IBlobStorageService, BlobStorageService>();
         services.AddScoped<IDocumentGeneratorService, DocumentGeneratorService>();
+        services.AddScoped<IMotorReglasService, MotorReglasService>();
+        services.AddScoped<IIngestorDocumentosService, IngestorDocumentosService>();
+        services.AddScoped<IBaseConocimientoRepository, BaseConocimientoRepository>();
 
         return services;
     }

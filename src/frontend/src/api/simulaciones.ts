@@ -31,10 +31,31 @@ export interface IniciarSimulacionRequest {
   dominioIds?: number[];
 }
 
+export interface ResultadoControlDto {
+  id: string;
+  codigoControl: string;
+  nombreControl: string;
+  dominio: string;
+  semaforo: string;
+  criticidad: string;
+  resultadoDetalle?: string;
+  analisisIa?: string;
+  recomendacion?: string;
+}
+
+export interface SimulacionDetalleDto extends SimulacionListDto {
+  descripcion?: string;
+  periodoInicio: string;
+  periodoFin: string;
+  controlesVerde?: number;
+  controlesAmarillo?: number;
+  resultados: ResultadoControlDto[];
+}
+
 export const getSimulaciones = (page = 1, pageSize = 20): Promise<PagedResult<SimulacionListDto>> =>
   api.get('/simulaciones', { params: { page, pageSize } }).then((r) => r.data);
 
-export const getSimulacion = (id: string) =>
+export const getSimulacion = (id: string): Promise<SimulacionDetalleDto> =>
   api.get(`/simulaciones/${id}`).then((r) => r.data);
 
 export const iniciarSimulacion = (data: IniciarSimulacionRequest): Promise<{ id: string }> =>
