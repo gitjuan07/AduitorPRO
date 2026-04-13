@@ -7,6 +7,7 @@ public class RolSistema
     public string NombreRol { get; set; } = string.Empty;
     public string? Descripcion { get; set; }
     public string? NivelRiesgo { get; set; }
+    public string? TransaccionesAutorizadas { get; set; }  // Comma-separated tcodes
     public bool EsCritico { get; set; } = false;
     public bool Activo { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
@@ -23,6 +24,8 @@ public class AsignacionRolUsuario
     public DateOnly? FechaVencimiento { get; set; }
     public string? AsignadoPor { get; set; }
     public string? ExpedienteRef { get; set; }
+    /// <summary>Número de caso SE Suite que justifica este acceso (si supera la Matriz de Puestos)</summary>
+    public string? CasoSESuiteRef { get; set; }
     public bool Activa { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

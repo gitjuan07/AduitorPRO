@@ -26,7 +26,12 @@ public class AppDbContext : DbContext
     public DbSet<AsignacionRolUsuario> AsignacionesRol => Set<AsignacionRolUsuario>();
     public DbSet<ConflictoSoD> ConflictosSoD => Set<ConflictoSoD>();
     public DbSet<MatrizPuestoRol> MatrizPuestoRol => Set<MatrizPuestoRol>();
+    public DbSet<MatrizPuestoSAP> MatrizPuestosSAP => Set<MatrizPuestoSAP>();
+    public DbSet<CasoSESuite> CasosSESuite => Set<CasoSESuite>();
+    public DbSet<FuenteDatoSimulacion> FuentesDatosSimulacion => Set<FuenteDatoSimulacion>();
     public DbSet<BaseConocimiento> BaseConocimiento => Set<BaseConocimiento>();
+    public DbSet<SnapshotEntraID> SnapshotsEntraID => Set<SnapshotEntraID>();
+    public DbSet<RegistroEntraID> RegistrosEntraID => Set<RegistroEntraID>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -68,6 +73,7 @@ public class AppDbContext : DbContext
         {
             e.HasKey(x => x.Id);
             e.HasQueryFilter(x => !x.IsDeleted);
+            e.Property(x => x.EvidenciaGenerada).HasDefaultValue(false);
         });
 
         modelBuilder.Entity<BitacoraEvento>(e =>
@@ -82,5 +88,58 @@ public class AppDbContext : DbContext
             e.HasKey(x => x.Id);
             e.HasQueryFilter(x => !x.IsDeleted);
         });
+
+        modelBuilder.Entity<UsuarioSistema>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.Sistema, x.NombreUsuario });
+            e.HasIndex(x => new { x.Sistema, x.Cedula });
+            e.HasQueryFilter(x => !x.IsDeleted);
+        });
+
+        modelBuilder.Entity<MatrizPuestoSAP>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.Puesto, x.Rol });
+            e.HasIndex(x => x.Cedula);
+            e.HasQueryFilter(x => !x.IsDeleted);
+        });
+
+        modelBuilder.Entity<CasoSESuite>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.NumeroCaso).IsUnique();
+            e.HasIndex(x => new { x.UsuarioSAP, x.RolJustificado });
+            e.HasQueryFilter(x => !x.IsDeleted);
+        });
+
+        modelBuilder.Entity<SnapshotEntraID>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.FechaInstantanea);
+            e.Property(x => x.Nombre).HasMaxLength(200).IsRequired();
+        });
+
+        modelBuilder.Entity<RegistroEntraID>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.SnapshotId, x.EmployeeId });
+            e.HasIndex(x => x.EmployeeId);
+            e.HasOne(r => r.Snapshot)
+             .WithMany(s => s.Registros)
+             .HasForeignKey(r => r.SnapshotId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<FuenteDatoSimulacion>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.SimulacionId);
+            e.HasOne<SimulacionAuditoria>()
+             .WithMany(s => s.FuentesDatos)
+             .HasForeignKey(f => f.SimulacionId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
     }
 }

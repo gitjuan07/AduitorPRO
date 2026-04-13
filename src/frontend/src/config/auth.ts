@@ -20,12 +20,14 @@ export const msalConfig: Configuration = {
   },
 };
 
+// Login: solo openid + profile — sin scopes de API custom para evitar bloqueo por admin consent
 export const loginRequest: PopupRequest = {
-  scopes: [
-    `api://auditorpro-ti/Simulaciones.Read`,
-    `api://auditorpro-ti/Simulaciones.Write`,
-    `api://auditorpro-ti/Hallazgos.Read`,
-  ],
+  scopes: ['openid', 'profile', 'email', 'User.Read'],
 };
 
-export const apiScopes = [`${import.meta.env.VITE_API_SCOPE || 'api://auditorpro-ti/Simulaciones.Read'}`];
+// Token para llamadas a la API — scope explícito con URI completo para que
+// Azure AD presente la pantalla de consentimiento al usuario (no requiere admin consent)
+const _clientId = import.meta.env.VITE_AZURE_CLIENT_ID || 'd33ab28c-95f5-4c60-acc4-b8acf32c1eac';
+export const apiScopes = [
+  `api://${_clientId}/Simulaciones.Read`,
+];

@@ -8,7 +8,7 @@ namespace AuditorPRO.Application.Features.Conectores;
 
 public record CrearConectorCommand(
     string Nombre, string Sistema, string? Descripcion,
-    TipoConector TipoConector, string? UrlEndpoint, string? AuthType,
+    TipoConector TipoConexion, string? UrlEndpoint, string? AuthType,
     string? SecretKeyVaultRef, string? ConfiguracionJson
 ) : IRequest<Guid>;
 
@@ -34,7 +34,7 @@ public class CrearConectorHandler : IRequestHandler<CrearConectorCommand, Guid>
         var c = new Conector
         {
             Nombre = request.Nombre, Sistema = request.Sistema, Descripcion = request.Descripcion,
-            TipoConector = request.TipoConector, UrlEndpoint = request.UrlEndpoint,
+            TipoConector = request.TipoConexion, UrlEndpoint = request.UrlEndpoint,
             AuthType = request.AuthType, SecretKeyVaultRef = request.SecretKeyVaultRef,
             ConfiguracionJson = request.ConfiguracionJson ?? "{}",
             Estado = EstadoConector.ACTIVO, CreatedBy = _user.Email
@@ -46,8 +46,8 @@ public class CrearConectorHandler : IRequestHandler<CrearConectorCommand, Guid>
 }
 
 public record ActualizarConectorCommand(
-    Guid Id, string Nombre, string? Descripcion,
-    string? UrlEndpoint, string? AuthType, string? SecretKeyVaultRef,
+    Guid Id, string Nombre, string Sistema, string? Descripcion,
+    TipoConector TipoConexion, string? UrlEndpoint, string? AuthType, string? SecretKeyVaultRef,
     EstadoConector Estado, string? ConfiguracionJson
 ) : IRequest;
 
@@ -60,9 +60,10 @@ public class ActualizarConectorHandler : IRequestHandler<ActualizarConectorComma
     {
         var c = await _repo.GetByIdAsync(request.Id, ct)
             ?? throw new KeyNotFoundException($"Conector {request.Id} no encontrado.");
-        c.Nombre = request.Nombre; c.Descripcion = request.Descripcion;
-        c.UrlEndpoint = request.UrlEndpoint; c.AuthType = request.AuthType;
-        c.SecretKeyVaultRef = request.SecretKeyVaultRef; c.Estado = request.Estado;
+        c.Nombre = request.Nombre; c.Sistema = request.Sistema; c.Descripcion = request.Descripcion;
+        c.TipoConector = request.TipoConexion; c.UrlEndpoint = request.UrlEndpoint;
+        c.AuthType = request.AuthType; c.SecretKeyVaultRef = request.SecretKeyVaultRef;
+        c.Estado = request.Estado;
         if (request.ConfiguracionJson != null) c.ConfiguracionJson = request.ConfiguracionJson;
         c.UpdatedAt = DateTime.UtcNow;
         await _repo.UpdateAsync(c, ct);
@@ -78,6 +79,41 @@ public class ProbarConectorResult
     public string Mensaje { get; set; } = string.Empty;
     public int DuracionMs { get; set; }
 }
+
+// ── Eliminar conector ─────────────────────────────────────────────────────────
+public record EliminarConectorCommand(Guid Id) : IRequest;
+
+public class EliminarConectorHandler : IRequestHandler<EliminarConectorCommand>
+{
+    private readonly IRepository<Conector> _repo;
+    public EliminarConectorHandler(IRepository<Conector> repo) => _repo = repo;
+
+    public async Task Handle(EliminarConectorCommand request, CancellationToken ct)
+    {
+        var c = await _repo.GetByIdAsync(request.Id, ct)
+            ?? throw new KeyNotFoundException($"Conector {request.Id} no encontrado.");
+        c.IsDeleted = true;
+        c.UpdatedAt = DateTime.UtcNow;
+        await _repo.UpdateAsync(c, ct);
+        await _repo.SaveChangesAsync(ct);
+    }
+}
+
+// ── Ejecutar conector (SQL/REST) y devolver resultados ────────────────────────
+public record EjecutarConectorCommand(Guid ConectorId, int MaxFilas = 500) : IRequest<EjecutarConectorResult>;
+
+public class EjecutarConectorResult
+{
+    public bool Exitoso { get; set; }
+    public string Mensaje { get; set; } = string.Empty;
+    public int DuracionMs { get; set; }
+    public int TotalFilas { get; set; }
+    public List<string> Columnas { get; set; } = [];
+    public List<List<object?>> Filas { get; set; } = [];
+}
+
+// ── Probar query personalizado (sin guardar) ──────────────────────────────────
+public record ProbarQueryCommand(Guid ConectorId, string? ConfiguracionJsonOverride = null) : IRequest<EjecutarConectorResult>;
 
 public class ProbarConectorHandler : IRequestHandler<ProbarConectorCommand, ProbarConectorResult>
 {

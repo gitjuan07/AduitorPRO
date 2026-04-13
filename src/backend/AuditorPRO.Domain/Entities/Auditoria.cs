@@ -59,7 +59,16 @@ public class SimulacionAuditoria : BaseEntity
     public DateTime? CompletadaAt { get; set; }
     public int? DuracionSegundos { get; set; }
     public string? ErrorDetalle { get; set; }
+    /// <summary>Objetivo o comentario libre del auditor para esta simulación</summary>
+    public string? Objetivo { get; set; }
+    /// <summary>Tipo de simulación de control cruzado: COMPLETO | SAP_NOMINA | SAP_ENTRA_ID | SOD</summary>
+    public string? TipoSimulacion { get; set; }
+    /// <summary>Resumen JSON de resultados del motor de control cruzado</summary>
+    public string? ResumenResultados { get; set; }
+    /// <summary>Total de hallazgos marcados como CRITICO generados por esta simulación</summary>
+    public int TotalCriticos { get; set; }
     public ICollection<ResultadoControl> Resultados { get; set; } = [];
+    public ICollection<FuenteDatoSimulacion> FuentesDatos { get; set; } = [];
 }
 
 public class ResultadoControl

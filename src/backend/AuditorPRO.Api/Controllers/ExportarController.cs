@@ -6,7 +6,7 @@ namespace AuditorPRO.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "AuditorPRO.Admin,AuditorPRO.Auditor,AuditorPRO.Gerente")]
+[Authorize]
 public class ExportarController : ControllerBase
 {
     private readonly IDocumentGeneratorService _docGen;

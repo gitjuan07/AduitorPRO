@@ -54,7 +54,9 @@ public class GetEvidenciasHandler : IRequestHandler<GetEvidenciasQuery, PagedRes
         var dtos = new List<EvidenciaDto>();
         foreach (var e in page)
         {
-            var sasUrl = await _blob.GenerateSasTokenAsync(e.BlobUrl, TimeSpan.FromHours(1), ct);
+            string? sasUrl = null;
+            try { sasUrl = await _blob.GenerateSasTokenAsync(e.BlobUrl, TimeSpan.FromHours(1), ct); }
+            catch { /* Storage no configurado — devolver sin SAS */ }
             dtos.Add(new EvidenciaDto
             {
                 Id = e.Id,

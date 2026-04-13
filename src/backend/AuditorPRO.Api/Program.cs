@@ -4,7 +4,9 @@ using AuditorPRO.Api.Middleware;
 using AuditorPRO.Api.Services;
 using AuditorPRO.Infrastructure;
 using AuditorPRO.Infrastructure.Persistence;
+using Azure.Identity;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Identity.Web;
@@ -13,6 +15,13 @@ using System.Security.Claims;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Key Vault — carga secretos en producción usando Managed Identity
+var keyVaultUri = builder.Configuration["KeyVault:VaultUri"];
+if (!string.IsNullOrEmpty(keyVaultUri) && !builder.Environment.IsDevelopment())
+{
+    builder.Configuration.AddAzureKeyVault(new Uri(keyVaultUri), new DefaultAzureCredential());
+}
 
 // Serilog
 Log.Logger = new LoggerConfiguration()
@@ -35,6 +44,19 @@ if (bypassAuth && builder.Environment.IsDevelopment())
 else
 {
     builder.Services.AddMicrosoftIdentityWebApiAuthentication(builder.Configuration, "AzureAd");
+
+    // Aceptar tokens v1 (aud=clientId) y v2 (aud=api://clientId) — ambos formatos válidos
+    var clientId = builder.Configuration["AzureAd:ClientId"] ?? "";
+    builder.Services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, opts =>
+    {
+        opts.TokenValidationParameters.ValidAudiences = new[]
+        {
+            clientId,
+            $"api://{clientId}",
+        };
+        // No requerir el claim 'roles' — permite cualquier usuario autenticado del tenant
+        opts.TokenValidationParameters.RoleClaimType = "roles";
+    });
 }
 
 // Application layers
@@ -57,25 +79,41 @@ builder.Services.AddRateLimiter(options =>
     });
 });
 
-// CORS
+// CORS — AllowedOrigins puede ser una lista separada por espacios o comas
+var allowedOrigins = (builder.Configuration["AllowedOrigins"] ?? "https://localhost:5173")
+    .Split([' ', ','], StringSplitOptions.RemoveEmptyEntries);
 builder.Services.AddCors(opts => opts.AddPolicy("FrontendPolicy", policy =>
-    policy.WithOrigins(
-            builder.Configuration["AllowedOrigins"] ?? "https://localhost:5173")
+    policy.WithOrigins(allowedOrigins)
         .AllowAnyHeader()
         .AllowAnyMethod()));
 
-builder.Services.AddControllers();
+// Aumentar límites para cargas masivas SAP (archivos >5000 filas pueden superar defaults)
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(opts =>
+{
+    opts.MultipartBodyLengthLimit  = 52_428_800; // 50 MB
+    opts.ValueLengthLimit          = 52_428_800;
+    opts.MultipartHeadersLengthLimit = 131_072;  // 128 KB
+});
+builder.WebHost.ConfigureKestrel(k =>
+{
+    k.Limits.MaxRequestBodySize = 52_428_800; // 50 MB
+});
+
+builder.Services.AddControllers()
+    .AddJsonOptions(opts =>
+        opts.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new() { Title = "AuditorPRO TI API", Version = "v1" });
 });
 
-// Health checks — SQL Server only in non-SQLite environments
+// Health checks — SQL Server agregado como degraded (no falla startup si BD no está lista)
 var healthConnStr = builder.Configuration.GetConnectionString("DefaultConnection") ?? "";
 var hcBuilder = builder.Services.AddHealthChecks();
 if (!healthConnStr.StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase))
-    hcBuilder.AddSqlServer(healthConnStr, name: "sql");
+    hcBuilder.AddSqlServer(healthConnStr, name: "sql",
+        failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Degraded);
 
 var app = builder.Build();
 
@@ -107,6 +145,8 @@ if (app.Environment.IsDevelopment())
         }
     }
 }
+// Producción: las migraciones se aplican vía script SQL en Azure Portal
+// (ver infra/scripts/sql/02-migrations-initial.sql)
 
 app.UseHttpsRedirection();
 app.UseCors("FrontendPolicy");

@@ -24,6 +24,20 @@ public class Hallazgo : BaseEntity
     public string? PlanAccion { get; set; }
     public string? AnalisisIa { get; set; }
     public string? EvidenciaCierreIds { get; set; }
+    /// <summary>Tipo de hallazgo del motor de control cruzado (p.ej. SOD, ACCESO_EX_EMPLEADO, ROL_NO_AUTORIZADO)</summary>
+    public string? TipoHallazgo { get; set; }
+    /// <summary>Cédula del empleado afectado (clave de cruce tridimensional)</summary>
+    public string? Cedula { get; set; }
+    /// <summary>Usuario SAP implicado en el hallazgo</summary>
+    public string? UsuarioSAP { get; set; }
+    /// <summary>Rol SAP que genera el hallazgo</summary>
+    public string? RolAfectado { get; set; }
+    /// <summary>Transacciones específicas en conflicto (separadas por coma)</summary>
+    public string? TransaccionesAfectadas { get; set; }
+    /// <summary>Número de caso SE Suite que justifica este acceso (si aplica)</summary>
+    public string? CasoSESuiteRef { get; set; }
+    /// <summary>Indica si ya se generó una evidencia formal para este hallazgo</summary>
+    public bool EvidenciaGenerada { get; set; }
     public ICollection<Evidencia> Evidencias { get; set; } = [];
 }
 

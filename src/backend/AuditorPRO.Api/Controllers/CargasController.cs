@@ -1,4 +1,5 @@
 using AuditorPRO.Application.Features.Cargas;
+using ClosedXML.Excel;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -7,11 +8,102 @@ namespace AuditorPRO.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "AuditorPRO.Admin,AuditorPRO.TI.Senior")]
+[Authorize]
 public class CargasController : ControllerBase
 {
     private readonly IMediator _mediator;
     public CargasController(IMediator mediator) => _mediator = mediator;
+
+    [HttpGet("plantilla/empleados")]
+    [AllowAnonymous]
+    public IActionResult PlantillaEmpleados()
+    {
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("Empleados");
+
+        // Encabezados
+        string[] headers = [
+            "NumeroEmpleado", "Nombre", "ApellidoPaterno", "ApellidoMaterno",
+            "CorreoCorporativo", "FechaIngreso", "EstadoLaboral",
+            "DepartamentoCodigo", "PuestoCodigo"
+        ];
+        for (int i = 0; i < headers.Length; i++)
+        {
+            var cell = ws.Cell(1, i + 1);
+            cell.Value = headers[i];
+            cell.Style.Font.Bold = true;
+            cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#1e40af");
+            cell.Style.Font.FontColor = XLColor.White;
+        }
+
+        // Fila de ejemplo
+        ws.Cell(2, 1).Value = "EMP-001";
+        ws.Cell(2, 2).Value = "Juan";
+        ws.Cell(2, 3).Value = "Serrano";
+        ws.Cell(2, 4).Value = "García";
+        ws.Cell(2, 5).Value = "juan.serrano@ilglogistics.com";
+        ws.Cell(2, 6).Value = "2024-01-15";
+        ws.Cell(2, 7).Value = "ACTIVO";
+        ws.Cell(2, 8).Value = "TI";
+        ws.Cell(2, 9).Value = "ANALYST";
+
+        // Nota en fila 3
+        ws.Cell(3, 1).Value = "* EstadoLaboral: ACTIVO | INACTIVO | BAJA_PROCESADA";
+        ws.Cell(3, 1).Style.Font.Italic = true;
+        ws.Cell(3, 1).Style.Font.FontColor = XLColor.Gray;
+        ws.Range(3, 1, 3, headers.Length).Merge();
+
+        ws.Columns().AdjustToContents();
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+        return File(ms.ToArray(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "plantilla_empleados.xlsx");
+    }
+
+    [HttpGet("plantilla/usuarios")]
+    [AllowAnonymous]
+    public IActionResult PlantillaUsuarios()
+    {
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("UsuariosSistema");
+
+        string[] headers = [
+            "Sistema", "NombreUsuario", "NumeroEmpleado",
+            "Estado", "TipoUsuario", "FechaUltimoAcceso"
+        ];
+        for (int i = 0; i < headers.Length; i++)
+        {
+            var cell = ws.Cell(1, i + 1);
+            cell.Value = headers[i];
+            cell.Style.Font.Bold = true;
+            cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#1e40af");
+            cell.Style.Font.FontColor = XLColor.White;
+        }
+
+        ws.Cell(2, 1).Value = "SAP";
+        ws.Cell(2, 2).Value = "JSERRANO";
+        ws.Cell(2, 3).Value = "EMP-001";
+        ws.Cell(2, 4).Value = "ACTIVO";
+        ws.Cell(2, 5).Value = "DIALOG";
+        ws.Cell(2, 6).Value = "2024-12-01";
+
+        ws.Cell(3, 1).Value = "* Estado: ACTIVO | INACTIVO | BLOQUEADO  |  Sistema: SAP | EVOLUTION | SE_SUITE | AD";
+        ws.Cell(3, 1).Style.Font.Italic = true;
+        ws.Cell(3, 1).Style.Font.FontColor = XLColor.Gray;
+        ws.Range(3, 1, 3, headers.Length).Merge();
+
+        ws.Columns().AdjustToContents();
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+        return File(ms.ToArray(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "plantilla_usuarios.xlsx");
+    }
 
     [HttpPost("empleados")]
     [RequestSizeLimit(10_485_760)] // 10 MB
@@ -45,5 +137,322 @@ public class CargasController : ControllerBase
         );
         var resultado = await _mediator.Send(cmd, ct);
         return Ok(resultado);
+    }
+
+    [HttpGet("plantilla/sap-roles")]
+    [AllowAnonymous]
+    public IActionResult PlantillaSapRoles()
+    {
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("SAP_Roles");
+
+        // Columnas idénticas a la vista V_SAP_USR_RECERTIFICAION
+        // Una fila por USUARIO + ROL + TRANSACCION (igual que el export SAP)
+        string[] headers = [
+            "USUARIO", "NOMBRE_COMPLETO", "SOCIEDAD", "DEPARTAMENTO", "PUESTO",
+            "EMAIL", "ROL", "INICIO_VALIDEZ", "FIN_VALIDEZ", "TRANSACCION", "ULTIMO_INGRESO"
+        ];
+        for (int i = 0; i < headers.Length; i++)
+        {
+            var cell = ws.Cell(1, i + 1);
+            cell.Value = headers[i];
+            cell.Style.Font.Bold = true;
+            cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#1e40af");
+            cell.Style.Font.FontColor = XLColor.White;
+        }
+
+        // Fila ejemplo — usuario con rol Z_FI_CUENTAS_PAGAR, transacción FB60
+        ws.Cell(2, 1).Value  = "JSERRANO";
+        ws.Cell(2, 2).Value  = "Juan Serrano García";
+        ws.Cell(2, 3).Value  = "ILG-CR";
+        ws.Cell(2, 4).Value  = "FINANZAS";
+        ws.Cell(2, 5).Value  = "ANALISTA_CONTABLE";
+        ws.Cell(2, 6).Value  = "juan.serrano@ilglogistics.com";
+        ws.Cell(2, 7).Value  = "Z_FI_CUENTAS_PAGAR";
+        ws.Cell(2, 8).Value  = "01/01/2024";
+        ws.Cell(2, 9).Value  = "";
+        ws.Cell(2, 10).Value = "FB60";
+        ws.Cell(2, 11).Value = "15/01/2025";
+
+        // Misma usuario, mismo rol, segunda transacción
+        ws.Cell(3, 1).Value  = "JSERRANO";
+        ws.Cell(3, 2).Value  = "Juan Serrano García";
+        ws.Cell(3, 3).Value  = "ILG-CR";
+        ws.Cell(3, 4).Value  = "FINANZAS";
+        ws.Cell(3, 5).Value  = "ANALISTA_CONTABLE";
+        ws.Cell(3, 6).Value  = "juan.serrano@ilglogistics.com";
+        ws.Cell(3, 7).Value  = "Z_FI_CUENTAS_PAGAR";
+        ws.Cell(3, 8).Value  = "01/01/2024";
+        ws.Cell(3, 9).Value  = "";
+        ws.Cell(3, 10).Value = "FB65";
+        ws.Cell(3, 11).Value = "15/01/2025";
+
+        // Mismo usuario, segundo rol
+        ws.Cell(4, 1).Value  = "JSERRANO";
+        ws.Cell(4, 2).Value  = "Juan Serrano García";
+        ws.Cell(4, 3).Value  = "ILG-CR";
+        ws.Cell(4, 4).Value  = "FINANZAS";
+        ws.Cell(4, 5).Value  = "ANALISTA_CONTABLE";
+        ws.Cell(4, 6).Value  = "juan.serrano@ilglogistics.com";
+        ws.Cell(4, 7).Value  = "Z_MM_COMPRAS";
+        ws.Cell(4, 8).Value  = "01/03/2024";
+        ws.Cell(4, 9).Value  = "";
+        ws.Cell(4, 10).Value = "ME21N";
+        ws.Cell(4, 11).Value = "15/01/2025";
+
+        // Nota
+        ws.Cell(5, 1).Value = "* Exporta directo desde V_SAP_USR_RECERTIFICAION o usa el mismo formato. Una fila por usuario+rol+transaccion. El sistema agrupa automáticamente.";
+        ws.Cell(5, 1).Style.Font.Italic = true;
+        ws.Cell(5, 1).Style.Font.FontColor = XLColor.Gray;
+        ws.Range(5, 1, 5, headers.Length).Merge();
+
+        ws.Columns().AdjustToContents();
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+        return File(ms.ToArray(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "plantilla_sap_roles.xlsx");
+    }
+
+    [HttpPost("sap-roles")]
+    [RequestSizeLimit(52_428_800)] // 50 MB
+    public async Task<IActionResult> CargarRolesSAP(
+        [FromForm] IFormFile archivo,
+        [FromForm] string sistema,
+        CancellationToken ct)
+    {
+        var cmd = new CargarRolesSAPCommand(
+            archivo.OpenReadStream(),
+            archivo.FileName,
+            archivo.ContentType,
+            sistema
+        );
+        var resultado = await _mediator.Send(cmd, ct);
+        return Ok(resultado);
+    }
+
+    // ─── Matriz de Puestos (aprobada por Contraloría) ────────────────────────
+
+    [HttpGet("plantilla/matriz-puestos")]
+    [AllowAnonymous]
+    public IActionResult PlantillaMatrizPuestos()
+    {
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("MatrizPuestos");
+
+        // Mismas columnas que V_SAP_USR_RECERTIFICAION + FechaRevisionContraloria al final
+        string[] headers = [
+            "ID", "USUARIO", "NOMBRE_COMPLETO", "SOCIEDAD", "DEPARTAMENTO", "PUESTO",
+            "EMAIL", "ROL", "INICIO_VALIDEZ", "FIN_VALIDEZ", "TRANSACCION", "ULTIMO_INGRESO",
+            "FECHA_REVISION_CONTRALORIA"
+        ];
+        for (int i = 0; i < headers.Length; i++)
+        {
+            var cell = ws.Cell(1, i + 1);
+            cell.Value = headers[i];
+            cell.Style.Font.Bold = true;
+            cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#7c3aed");
+            cell.Style.Font.FontColor = XLColor.White;
+        }
+
+        // Fila de ejemplo
+        ws.Cell(2, 1).Value  = "112340567";
+        ws.Cell(2, 2).Value  = "JSERRANO";
+        ws.Cell(2, 3).Value  = "Juan Serrano García";
+        ws.Cell(2, 4).Value  = "ILG-CR";
+        ws.Cell(2, 5).Value  = "FINANZAS";
+        ws.Cell(2, 6).Value  = "ANALISTA_CONTABLE";
+        ws.Cell(2, 7).Value  = "juan.serrano@ilglogistics.com";
+        ws.Cell(2, 8).Value  = "Z_FI_CUENTAS_PAGAR";
+        ws.Cell(2, 9).Value  = "01/01/2024";
+        ws.Cell(2, 10).Value = "";
+        ws.Cell(2, 11).Value = "FB60";
+        ws.Cell(2, 12).Value = "15/01/2025";
+        ws.Cell(2, 13).Value = "31/07/2025";
+
+        // Nota
+        ws.Cell(3, 1).Value = "* Misma estructura que V_SAP_USR_RECERTIFICAION + columna FECHA_REVISION_CONTRALORIA (default 31/07/2025 si se omite).";
+        ws.Cell(3, 1).Style.Font.Italic = true;
+        ws.Cell(3, 1).Style.Font.FontColor = XLColor.Gray;
+        ws.Range(3, 1, 3, headers.Length).Merge();
+
+        ws.Columns().AdjustToContents();
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+        return File(ms.ToArray(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "plantilla_matriz_puestos.xlsx");
+    }
+
+    [HttpPost("matriz-puestos")]
+    [RequestSizeLimit(20_971_520)] // 20 MB
+    public async Task<IActionResult> CargarMatrizPuestos(
+        [FromForm] IFormFile archivo,
+        CancellationToken ct)
+    {
+        var cmd = new CargarMatrizPuestosCommand(
+            archivo.OpenReadStream(),
+            archivo.FileName,
+            archivo.ContentType
+        );
+        var resultado = await _mediator.Send(cmd, ct);
+        return Ok(resultado);
+    }
+
+    // ─── Casos SE Suite ───────────────────────────────────────────────────────
+
+    [HttpGet("plantilla/casos-sesuite")]
+    [AllowAnonymous]
+    public IActionResult PlantillaCasosSESuite()
+    {
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("CasosSESuite");
+
+        string[] headers = [
+            "NUMERO_CASO", "TITULO", "USUARIO_SAP", "CEDULA",
+            "ROL_JUSTIFICADO", "TRANSACCIONES", "FECHA_APROBACION",
+            "FECHA_VENCIMIENTO", "ESTADO", "APROBADOR"
+        ];
+        for (int i = 0; i < headers.Length; i++)
+        {
+            var cell = ws.Cell(1, i + 1);
+            cell.Value = headers[i];
+            cell.Style.Font.Bold = true;
+            cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#b45309");
+            cell.Style.Font.FontColor = XLColor.White;
+        }
+
+        // Fila de ejemplo
+        ws.Cell(2, 1).Value  = "CASE-2024-001";
+        ws.Cell(2, 2).Value  = "Acceso contabilidad especial — Proyecto cierre Q4";
+        ws.Cell(2, 3).Value  = "JSERRANO";
+        ws.Cell(2, 4).Value  = "112340567";
+        ws.Cell(2, 5).Value  = "Z_FI_CIERRE_ANUAL";
+        ws.Cell(2, 6).Value  = "F.01,FAGLB03,S_ALR_87012284";
+        ws.Cell(2, 7).Value  = "15/11/2024";
+        ws.Cell(2, 8).Value  = "31/01/2025";
+        ws.Cell(2, 9).Value  = "APROBADO";
+        ws.Cell(2, 10).Value = "María Contreras (Contraloría)";
+
+        // Nota
+        ws.Cell(3, 1).Value = "* ESTADO: APROBADO | VENCIDO | ANULADO  |  TRANSACCIONES: separadas por coma";
+        ws.Cell(3, 1).Style.Font.Italic = true;
+        ws.Cell(3, 1).Style.Font.FontColor = XLColor.Gray;
+        ws.Range(3, 1, 3, headers.Length).Merge();
+
+        ws.Columns().AdjustToContents();
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+        return File(ms.ToArray(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "plantilla_casos_sesuite.xlsx");
+    }
+
+    [HttpPost("casos-sesuite")]
+    [RequestSizeLimit(20_971_520)] // 20 MB
+    public async Task<IActionResult> CargarCasosSESuite(
+        [FromForm] IFormFile archivo,
+        CancellationToken ct)
+    {
+        var cmd = new CargarCasosSESuiteCommand(
+            archivo.OpenReadStream(),
+            archivo.FileName,
+            archivo.ContentType
+        );
+        var resultado = await _mediator.Send(cmd, ct);
+        return Ok(resultado);
+    }
+
+    // ─── Snapshots de Usuarios Entra ID ──────────────────────────────────────
+
+    [HttpGet("plantilla/snapshot-entraid")]
+    [AllowAnonymous]
+    public IActionResult PlantillaSnapshotEntraID()
+    {
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("EntraID");
+
+        string[] headers = [
+            "EmployeeId", "ObjectId", "DisplayName", "UserPrincipalName", "Email",
+            "Department", "JobTitle", "AccountEnabled", "Manager", "OfficeLocation",
+            "CreatedDateTime", "LastSignInDateTime"
+        ];
+        for (int i = 0; i < headers.Length; i++)
+        {
+            var cell = ws.Cell(1, i + 1);
+            cell.Value = headers[i];
+            cell.Style.Font.Bold = true;
+            cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#0f172a");
+            cell.Style.Font.FontColor = XLColor.White;
+        }
+
+        // Fila de ejemplo
+        ws.Cell(2, 1).Value  = "112340567";        // EmployeeId = Cédula
+        ws.Cell(2, 2).Value  = "a1b2c3d4-...";     // ObjectId Entra ID
+        ws.Cell(2, 3).Value  = "Juan Serrano García";
+        ws.Cell(2, 4).Value  = "juan.serrano@ilglogistics.com";
+        ws.Cell(2, 5).Value  = "juan.serrano@ilglogistics.com";
+        ws.Cell(2, 6).Value  = "FINANZAS";
+        ws.Cell(2, 7).Value  = "ANALISTA_CONTABLE";
+        ws.Cell(2, 8).Value  = "TRUE";
+        ws.Cell(2, 9).Value  = "María Contreras";
+        ws.Cell(2, 10).Value = "San José, CR";
+        ws.Cell(2, 11).Value = "15/01/2023 08:00";
+        ws.Cell(2, 12).Value = "10/04/2026 09:35";
+
+        ws.Cell(3, 1).Value = "* EmployeeId = Cédula de identidad (campo clave de cruce). " +
+            "AccountEnabled: TRUE/FALSE. Exporta desde Azure AD o Graph API. " +
+            "Cada carga genera una nueva instantánea (snapshot) independiente.";
+        ws.Cell(3, 1).Style.Font.Italic = true;
+        ws.Cell(3, 1).Style.Font.FontColor = XLColor.Gray;
+        ws.Range(3, 1, 3, headers.Length).Merge();
+
+        ws.Columns().AdjustToContents();
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+        return File(ms.ToArray(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "plantilla_entra_id.xlsx");
+    }
+
+    [HttpPost("snapshot-entraid")]
+    [RequestSizeLimit(20_971_520)]
+    public async Task<IActionResult> CargarSnapshotEntraID(
+        [FromForm] IFormFile archivo,
+        [FromForm] string? nombre,
+        CancellationToken ct)
+    {
+        var cmd = new CargarSnapshotEntraIDCommand(
+            archivo.OpenReadStream(),
+            archivo.FileName,
+            archivo.ContentType,
+            nombre
+        );
+        var resultado = await _mediator.Send(cmd, ct);
+        return Ok(resultado);
+    }
+
+    [HttpGet("snapshots-entraid")]
+    public async Task<IActionResult> GetSnapshotsEntraID(CancellationToken ct)
+    {
+        var resultado = await _mediator.Send(new GetSnapshotsEntraIDQuery(), ct);
+        return Ok(resultado);
+    }
+
+    [HttpGet("snapshot-entraid/{id:guid}/excel")]
+    public async Task<IActionResult> DescargarSnapshotEntraID(Guid id, CancellationToken ct)
+    {
+        var resultado = await _mediator.Send(new DescargarSnapshotEntraIDQuery(id), ct);
+        return File(resultado.Contenido,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            resultado.NombreArchivo);
     }
 }

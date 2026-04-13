@@ -12,13 +12,27 @@ public class AzureOpenAIService : IAzureOpenAIService
     private readonly string _deploymentName;
     private readonly ILogger<AzureOpenAIService> _logger;
 
+    private readonly bool _configured;
+
     public AzureOpenAIService(IConfiguration config, ILogger<AzureOpenAIService> logger)
     {
         _logger = logger;
-        var endpoint = config["AzureOpenAI:Endpoint"] ?? throw new InvalidOperationException("AzureOpenAI:Endpoint not configured");
-        var apiKey = config["AzureOpenAI:ApiKey"] ?? throw new InvalidOperationException("AzureOpenAI:ApiKey not configured");
+        var endpoint = config["AzureOpenAI:Endpoint"] ?? "";
+        var apiKey = config["AzureOpenAI:ApiKey"] ?? "";
         _deploymentName = config["AzureOpenAI:DeploymentName"] ?? "gpt-4o";
-        _client = new AzureOpenAIClient(new Uri(endpoint), new Azure.AzureKeyCredential(apiKey));
+
+        _configured = !string.IsNullOrWhiteSpace(apiKey)
+            && !string.IsNullOrWhiteSpace(endpoint)
+            && !endpoint.Contains("placeholder");
+
+        if (_configured)
+            _client = new AzureOpenAIClient(new Uri(endpoint), new Azure.AzureKeyCredential(apiKey));
+        else
+        {
+            // Dummy client — no se usará; se retorna mensaje de no configurado
+            _client = null!;
+            _logger.LogWarning("AzureOpenAI no está configurado. El Agente IA responderá con mensaje de aviso.");
+        }
     }
 
     public async Task<string> AnalizarControlAsync(string contexto, string descripcionControl, string resultado, CancellationToken ct = default)
@@ -58,6 +72,10 @@ public class AzureOpenAIService : IAzureOpenAIService
 
     private async Task<string> CallAsync(string userMessage, CancellationToken ct, string? systemMessage = null)
     {
+        if (!_configured)
+            return "El Agente IA aún no está activo. Para habilitarlo, configure un recurso de Azure OpenAI " +
+                   "(AzureOpenAI:Endpoint y AzureOpenAI:ApiKey) en los App Settings del servidor.";
+
         try
         {
             var chatClient = _client.GetChatClient(_deploymentName);

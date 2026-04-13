@@ -10,6 +10,7 @@ export interface ConectorDto {
   ultimoTest?: string;
   ultimoTestResultado?: string;
   descripcion?: string;
+  configuracionJson?: string;
 }
 
 export interface TestConectorResult {
@@ -18,8 +19,18 @@ export interface TestConectorResult {
   mensaje: string;
 }
 
+export interface EjecutarResult {
+  exitoso: boolean;
+  mensaje: string;
+  duracionMs: number;
+  totalFilas: number;
+  columnas: string[];
+  filas: (string | null)[][];
+}
+
 export const conectoresApi = {
-  getAll: () => api.get<ConectorDto[]>('/conectores').then(r => r.data),
+  getAll: () => api.get<{ items: ConectorDto[] } | ConectorDto[]>('/conectores')
+    .then(r => Array.isArray(r.data) ? r.data : (r.data as { items: ConectorDto[] }).items),
 
   getById: (id: string) => api.get<ConectorDto>(`/conectores/${id}`).then(r => r.data),
 
@@ -34,6 +45,9 @@ export const conectoresApi = {
   probar: (id: string) =>
     api.post<TestConectorResult>(`/conectores/${id}/probar`).then(r => r.data),
 
-  ejecutar: (id: string) =>
-    api.post(`/conectores/${id}/ejecutar`),
+  ejecutar: (id: string, maxFilas = 500) =>
+    api.post<EjecutarResult>(`/conectores/${id}/ejecutar`, null, { params: { maxFilas } }).then(r => r.data),
+
+  probarQuery: (id: string, configuracionJsonOverride?: string) =>
+    api.post<EjecutarResult>(`/conectores/${id}/probar-query`, { configuracionJsonOverride }).then(r => r.data),
 };

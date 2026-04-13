@@ -12,9 +12,9 @@ public class ConectorDto
 {
     public Guid Id { get; set; }
     public string Nombre { get; set; } = string.Empty;
-    public string SistemaDestino { get; set; } = string.Empty;
+    public string Sistema { get; set; } = string.Empty;
     public string? Descripcion { get; set; }
-    public string TipoConector { get; set; } = string.Empty;
+    public string TipoConexion { get; set; } = string.Empty;
     public string Estado { get; set; } = string.Empty;
     public DateTime? UltimaEjecucion { get; set; }
     public bool UltimaEjecucionExito { get; set; }
@@ -22,6 +22,8 @@ public class ConectorDto
     public int TotalEjecuciones { get; set; }
     public string? UrlEndpoint { get; set; }
     public string? AuthType { get; set; }
+    public string? ConfiguracionJson { get; set; }
+    public string? SecretKeyVaultRef { get; set; }
 }
 
 public class GetConectoresHandler : IRequestHandler<GetConectoresQuery, PagedResult<ConectorDto>>
@@ -37,11 +39,12 @@ public class GetConectoresHandler : IRequestHandler<GetConectoresQuery, PagedRes
             .Skip((request.Page - 1) * request.PageSize).Take(request.PageSize)
             .Select(c => new ConectorDto
             {
-                Id = c.Id, Nombre = c.Nombre, SistemaDestino = c.Sistema,
-                Descripcion = c.Descripcion, TipoConector = c.TipoConector.ToString(),
+                Id = c.Id, Nombre = c.Nombre, Sistema = c.Sistema,
+                Descripcion = c.Descripcion, TipoConexion = c.TipoConector.ToString(),
                 Estado = c.Estado.ToString(), UltimaEjecucion = c.UltimaEjecucion,
                 UltimaEjecucionExito = c.UltimaEjecucionExito, UltimoError = c.UltimoError,
-                TotalEjecuciones = c.TotalEjecuciones, UrlEndpoint = c.UrlEndpoint, AuthType = c.AuthType
+                TotalEjecuciones = c.TotalEjecuciones, UrlEndpoint = c.UrlEndpoint, AuthType = c.AuthType,
+                ConfiguracionJson = c.ConfiguracionJson, SecretKeyVaultRef = c.SecretKeyVaultRef
             });
 
         return new PagedResult<ConectorDto> { Items = items, TotalCount = total, Page = request.Page, PageSize = request.PageSize };

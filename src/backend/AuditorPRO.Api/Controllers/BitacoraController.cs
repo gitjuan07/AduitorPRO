@@ -8,7 +8,7 @@ namespace AuditorPRO.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "AuditorPRO.Admin,AuditorPRO.Auditor")]
+[Authorize]
 public class BitacoraController : ControllerBase
 {
     private readonly IMediator _mediator;

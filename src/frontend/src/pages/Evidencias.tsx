@@ -40,7 +40,7 @@ export function Evidencias() {
     try {
       for (const file of Array.from(files)) {
         const fd = new FormData();
-        fd.append('file', file);
+        fd.append('archivo', file);
         fd.append('tipoEvidencia', 'ARCHIVO');
         await evidenciasApi.upload(fd);
       }

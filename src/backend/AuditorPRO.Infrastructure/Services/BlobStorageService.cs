@@ -12,16 +12,34 @@ public class BlobStorageService : IBlobStorageService
     private readonly BlobServiceClient _blobServiceClient;
     private readonly ILogger<BlobStorageService> _logger;
 
+    private readonly bool _configured;
+
     public BlobStorageService(IConfiguration config, ILogger<BlobStorageService> logger)
     {
         _logger = logger;
-        var connectionString = config["AzureStorage:ConnectionString"]
-            ?? throw new InvalidOperationException("AzureStorage:ConnectionString not configured");
-        _blobServiceClient = new BlobServiceClient(connectionString);
+        var connectionString = config["AzureStorage:ConnectionString"] ?? "";
+
+        _configured = !string.IsNullOrWhiteSpace(connectionString)
+            && connectionString.StartsWith("DefaultEndpointsProtocol", StringComparison.OrdinalIgnoreCase);
+
+        if (_configured)
+            _blobServiceClient = new BlobServiceClient(connectionString);
+        else
+        {
+            _blobServiceClient = null!;
+            _logger.LogWarning("AzureStorage no está configurado. Las operaciones de Blob retornarán errores controlados.");
+        }
+    }
+
+    private void EnsureConfigured()
+    {
+        if (!_configured)
+            throw new InvalidOperationException("Azure Storage no está configurado en este entorno.");
     }
 
     public async Task<string> UploadAsync(Stream content, string fileName, string contentType, string container, CancellationToken ct = default)
     {
+        EnsureConfigured();
         var containerClient = _blobServiceClient.GetBlobContainerClient(container);
         await containerClient.CreateIfNotExistsAsync(PublicAccessType.None, cancellationToken: ct);
 
@@ -34,6 +52,7 @@ public class BlobStorageService : IBlobStorageService
 
     public async Task<Stream> DownloadAsync(string blobUrl, CancellationToken ct = default)
     {
+        EnsureConfigured();
         var blobClient = new BlobClient(new Uri(blobUrl));
         var response = await blobClient.DownloadStreamingAsync(cancellationToken: ct);
         return response.Value.Content;
@@ -41,6 +60,7 @@ public class BlobStorageService : IBlobStorageService
 
     public async Task DeleteAsync(string blobUrl, CancellationToken ct = default)
     {
+        EnsureConfigured();
         var blobClient = new BlobClient(new Uri(blobUrl));
         await blobClient.DeleteIfExistsAsync(cancellationToken: ct);
     }

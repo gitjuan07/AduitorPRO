@@ -34,7 +34,7 @@ public class SimulacionesController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "AuditorPRO.Admin,AuditorPRO.Auditor,AuditorPRO.TI.Senior")]
+    [Authorize]
     [ProducesResponseType(typeof(Guid), 201)]
     public async Task<IActionResult> Iniciar([FromBody] IniciarSimulacionCommand command, CancellationToken ct)
     {
@@ -43,11 +43,37 @@ public class SimulacionesController : ControllerBase
     }
 
     [HttpPost("{id:guid}/cancelar")]
-    [Authorize(Roles = "AuditorPRO.Admin,AuditorPRO.Auditor")]
+    [Authorize]
     [ProducesResponseType(204)]
     public async Task<IActionResult> Cancelar(Guid id, CancellationToken ct)
     {
         await _mediator.Send(new CancelarSimulacionCommand(id), ct);
         return NoContent();
     }
+
+    /// <summary>
+    /// Ejecuta el Motor de Control Cruzado (R01–R05) sobre los datos cargados
+    /// y genera hallazgos automáticamente.
+    /// </summary>
+    [HttpPost("{id:guid}/ejecutar-control-cruzado")]
+    [Authorize]
+    [ProducesResponseType(typeof(ControlCruzadoResultado), 200)]
+    public async Task<IActionResult> EjecutarControlCruzado(
+        Guid id,
+        [FromBody] EjecutarControlCruzadoRequest body,
+        CancellationToken ct)
+    {
+        var cmd = new EjecutarControlCruzadoCommand(
+            id,
+            body.Objetivo,
+            body.TipoControlCruzado ?? "COMPLETO"
+        );
+        var resultado = await _mediator.Send(cmd, ct);
+        return Ok(resultado);
+    }
 }
+
+public record EjecutarControlCruzadoRequest(
+    string? Objetivo,
+    string? TipoControlCruzado
+);

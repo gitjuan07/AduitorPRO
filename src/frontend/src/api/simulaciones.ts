@@ -63,3 +63,22 @@ export const iniciarSimulacion = (data: IniciarSimulacionRequest): Promise<{ id:
 
 export const cancelarSimulacion = (id: string) =>
   api.post(`/simulaciones/${id}/cancelar`);
+
+export interface ControlCruzadoRequest {
+  objetivo?: string;
+  tipoControlCruzado?: 'COMPLETO' | 'SAP_NOMINA' | 'SAP_ENTRA_ID' | 'SOD_ONLY';
+}
+
+export interface ControlCruzadoResultado {
+  totalHallazgos: number;
+  criticos: number;
+  medios: number;
+  bajos: number;
+  porRegla: Record<string, number>;
+}
+
+export const ejecutarControlCruzado = (
+  id: string,
+  data: ControlCruzadoRequest
+): Promise<ControlCruzadoResultado> =>
+  api.post(`/simulaciones/${id}/ejecutar-control-cruzado`, data).then((r) => r.data);

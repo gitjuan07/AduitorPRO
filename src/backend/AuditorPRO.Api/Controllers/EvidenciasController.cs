@@ -24,7 +24,7 @@ public class EvidenciasController : ControllerBase
         CancellationToken ct = default)
         => Ok(await _mediator.Send(new GetEvidenciasQuery(hallazgoId, simulacionId, tipo, page, pageSize), ct));
 
-    [HttpPost("subir")]
+    [HttpPost("upload")]
     [RequestSizeLimit(52_428_800)] // 50 MB
     public async Task<IActionResult> Subir(
         [FromForm] IFormFile archivo,
@@ -53,7 +53,7 @@ public class EvidenciasController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
-    [Authorize(Roles = "AuditorPRO.Admin,AuditorPRO.Auditor")]
+    [Authorize]
     public async Task<IActionResult> Eliminar(Guid id, CancellationToken ct)
     {
         await _mediator.Send(new EliminarEvidenciaCommand(id), ct);

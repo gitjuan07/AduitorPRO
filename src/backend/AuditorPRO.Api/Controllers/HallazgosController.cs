@@ -31,7 +31,7 @@ public class HallazgosController : ControllerBase
     }
 
     [HttpPut("{id:guid}/plan-accion")]
-    [Authorize(Roles = "AuditorPRO.Admin,AuditorPRO.Auditor,AuditorPRO.TI.Senior,AuditorPRO.Responsable")]
+    [Authorize]
     [ProducesResponseType(204)]
     public async Task<IActionResult> ActualizarPlanAccion(Guid id, [FromBody] ActualizarPlanAccionRequest request, CancellationToken ct)
     {
@@ -40,7 +40,7 @@ public class HallazgosController : ControllerBase
     }
 
     [HttpPost("{id:guid}/cerrar")]
-    [Authorize(Roles = "AuditorPRO.Admin,AuditorPRO.Auditor")]
+    [Authorize]
     [ProducesResponseType(204)]
     public async Task<IActionResult> Cerrar(Guid id, [FromBody] CerrarRequest request, CancellationToken ct)
     {

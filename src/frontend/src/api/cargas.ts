@@ -11,18 +11,18 @@ export interface CargaResultado {
 export const cargasApi = {
   cargarEmpleados: (file: File, sociedadId: number): Promise<CargaResultado> => {
     const form = new FormData();
-    form.append('file', file);
+    form.append('archivo', file);
     form.append('sociedadId', String(sociedadId));
     return api.post('/cargas/empleados', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }).then(r => r.data);
   },
 
-  cargarUsuarios: (file: File, sociedadId: number): Promise<CargaResultado> => {
+  cargarUsuarios: (file: File, sistema: string): Promise<CargaResultado> => {
     const form = new FormData();
-    form.append('file', file);
-    form.append('sociedadId', String(sociedadId));
-    return api.post('/cargas/usuarios', form, {
+    form.append('archivo', file);
+    form.append('sistema', sistema);
+    return api.post('/cargas/usuarios-sistema', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }).then(r => r.data);
   },
@@ -46,4 +46,109 @@ export const cargasApi = {
     a.click();
     URL.revokeObjectURL(url);
   },
+
+  cargarRolesSAP: (file: File, sistema: string): Promise<CargaResultado> => {
+    const form = new FormData();
+    form.append('archivo', file);
+    form.append('sistema', sistema);
+    return api.post('/cargas/sap-roles', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(r => r.data);
+  },
+
+  descargarPlantillaSapRoles: async () => {
+    const res = await api.get('/cargas/plantilla/sap-roles', { responseType: 'blob' });
+    const url = URL.createObjectURL(res.data);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'plantilla_sap_roles.xlsx';
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  cargarMatrizPuestos: (file: File): Promise<CargaResultado> => {
+    const form = new FormData();
+    form.append('archivo', file);
+    return api.post('/cargas/matriz-puestos', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(r => r.data);
+  },
+
+  descargarPlantillaMatrizPuestos: async () => {
+    const res = await api.get('/cargas/plantilla/matriz-puestos', { responseType: 'blob' });
+    const url = URL.createObjectURL(res.data);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'plantilla_matriz_puestos.xlsx';
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  cargarCasosSeSuite: (file: File): Promise<CargaResultado> => {
+    const form = new FormData();
+    form.append('archivo', file);
+    return api.post('/cargas/casos-sesuite', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(r => r.data);
+  },
+
+  descargarPlantillaCasosSeSuite: async () => {
+    const res = await api.get('/cargas/plantilla/casos-sesuite', { responseType: 'blob' });
+    const url = URL.createObjectURL(res.data);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'plantilla_casos_sesuite.xlsx';
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  // ── Snapshots Entra ID ────────────────────────────────────────────────────
+  cargarSnapshotEntraID: (file: File, nombre?: string): Promise<SnapshotEntraIDResultado> => {
+    const form = new FormData();
+    form.append('archivo', file);
+    if (nombre) form.append('nombre', nombre);
+    return api.post('/cargas/snapshot-entraid', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(r => r.data);
+  },
+
+  getSnapshotsEntraID: (): Promise<SnapshotEntraIDDto[]> =>
+    api.get('/cargas/snapshots-entraid').then(r => r.data),
+
+  descargarSnapshotEntraID: async (id: string, nombre: string) => {
+    const res = await api.get(`/cargas/snapshot-entraid/${id}/excel`, { responseType: 'blob' });
+    const url = URL.createObjectURL(res.data);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `EntraID_Snapshot_${nombre}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  descargarPlantillaEntraID: async () => {
+    const res = await api.get('/cargas/plantilla/snapshot-entraid', { responseType: 'blob' });
+    const url = URL.createObjectURL(res.data);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'plantilla_entra_id.xlsx';
+    a.click();
+    URL.revokeObjectURL(url);
+  },
 };
+
+export interface SnapshotEntraIDResultado {
+  snapshotId: string;
+  nombre: string;
+  fechaInstantanea: string;
+  totalRegistros: number;
+  errores: number;
+  detalleErrores: string[];
+}
+
+export interface SnapshotEntraIDDto {
+  id: string;
+  nombre: string;
+  fechaInstantanea: string;
+  totalRegistros: number;
+  creadoPor?: string;
+}
