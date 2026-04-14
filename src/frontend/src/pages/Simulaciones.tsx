@@ -33,8 +33,13 @@ export function Simulaciones() {
   const [objetivo, setObjetivo] = useState('');
   const [tipoControl, setTipoControl] = useState<string>('COMPLETO');
   const hoy = new Date().toISOString().split('T')[0];
+  const nombreSugerido = (() => {
+    const d = new Date();
+    const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    return `Auditoría de Accesos SAP — ${meses[d.getMonth()]} ${d.getFullYear()}`;
+  })();
   const { register, handleSubmit, reset } = useForm<{ nombre: string; periodoInicio: string; periodoFin: string }>({
-    defaultValues: { nombre: '', periodoInicio: hoy, periodoFin: hoy },
+    defaultValues: { nombre: nombreSugerido, periodoInicio: hoy, periodoFin: hoy },
   });
   const navigate = useNavigate();
 
@@ -124,8 +129,13 @@ export function Simulaciones() {
           <h3 className="font-semibold text-gray-700">Nueva Simulación</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
-              <label className="text-xs text-gray-500">Nombre</label>
-              <input {...register('nombre', { required: true })} className="w-full border rounded-lg px-3 py-2 text-sm mt-1" />
+              <label className="text-xs text-gray-500">Nombre de la simulación</label>
+              <input
+                {...register('nombre', { required: true })}
+                placeholder="Ej: Auditoría de Accesos SAP — Abril 2026"
+                className="w-full border rounded-lg px-3 py-2 text-sm mt-1"
+              />
+              <p className="text-[11px] text-gray-400 mt-0.5">Puede editar el nombre sugerido</p>
             </div>
             <div>
               <label className="text-xs text-gray-500">Período inicio</label>

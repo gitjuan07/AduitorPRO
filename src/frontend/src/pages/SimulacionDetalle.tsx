@@ -379,12 +379,19 @@ export function SimulacionDetalle() {
       .finally(() => setLoading(false));
   }, [id]);
 
+  const safeFilename = (ext: string) => {
+    const base = sim?.nombre
+      ? sim.nombre.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s_-]/g, '').replace(/\s+/g, '_').slice(0, 60)
+      : id;
+    return `${base}.${ext}`;
+  };
+
   const exportarWord = async () => {
     setExporting(true);
     try {
       const res = await api.get(`/exportar/simulacion/${id}/word`, { responseType: 'blob' });
       const url = URL.createObjectURL(res.data);
-      const a = document.createElement('a'); a.href = url; a.download = `informe_${id}.docx`; a.click();
+      const a = document.createElement('a'); a.href = url; a.download = safeFilename('docx'); a.click();
       URL.revokeObjectURL(url);
     } catch { toast.error('Error al exportar Word'); }
     finally { setExporting(false); }
@@ -395,7 +402,7 @@ export function SimulacionDetalle() {
     try {
       const res = await api.get(`/exportar/simulacion/${id}/ppt`, { responseType: 'blob' });
       const url = URL.createObjectURL(res.data);
-      const a = document.createElement('a'); a.href = url; a.download = `resumen_${id}.pptx`; a.click();
+      const a = document.createElement('a'); a.href = url; a.download = safeFilename('pptx'); a.click();
       URL.revokeObjectURL(url);
     } catch { toast.error('Error al exportar PPT'); }
     finally { setExporting(false); }
@@ -423,33 +430,43 @@ export function SimulacionDetalle() {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div className="flex items-start gap-3">
-          <button onClick={() => navigate('/simulaciones')} className="mt-1 text-gray-400 hover:text-gray-700 transition">
-            <ArrowLeft size={18} />
-          </button>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">{sim.nombre}</h1>
-            <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-              <span className={`px-2 py-0.5 rounded-full font-medium ${
-                sim.estado === 'COMPLETADA' ? 'bg-green-100 text-green-700' :
-                sim.estado === 'EN_PROCESO' ? 'bg-blue-100 text-blue-700' :
-                sim.estado === 'ERROR'      ? 'bg-red-100 text-red-700' :
-                'bg-gray-100 text-gray-600'}`}>{sim.estado}</span>
-              <span className="flex items-center gap-1"><Clock size={11} />{sim.periodoInicio} — {sim.periodoFin}</span>
-              {sim.completadaAt && <span>Completada: {new Date(sim.completadaAt).toLocaleString('es-CR')}</span>}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4">
+        <div className="flex items-start justify-between">
+          <div className="flex items-start gap-3">
+            <button onClick={() => navigate('/simulaciones')}
+              className="mt-1 text-gray-400 hover:text-gray-700 transition flex items-center gap-1 text-xs">
+              <ArrowLeft size={15} />
+              <span className="hidden sm:inline text-gray-400">Simulaciones</span>
+            </button>
+            <div className="border-l border-gray-200 pl-3">
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                  sim.estado === 'COMPLETADA' ? 'bg-green-100 text-green-700' :
+                  sim.estado === 'EN_PROCESO' ? 'bg-blue-100 text-blue-700' :
+                  sim.estado === 'ERROR'      ? 'bg-red-100 text-red-700' :
+                  'bg-gray-100 text-gray-600'}`}>{sim.estado}</span>
+                <span className="text-xs text-gray-400 flex items-center gap-1">
+                  <Clock size={10} /> Período: {sim.periodoInicio} — {sim.periodoFin}
+                </span>
+              </div>
+              <h1 className="text-xl font-bold text-gray-900 leading-tight">{sim.nombre}</h1>
+              {sim.completadaAt && (
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  Completada el {new Date(sim.completadaAt).toLocaleString('es-CR', { dateStyle: 'long', timeStyle: 'short' })}
+                </p>
+              )}
             </div>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={exportarWord} disabled={exporting}
-            className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition">
-            <Download size={13} /> Word
-          </button>
-          <button onClick={exportarPpt} disabled={exporting}
-            className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition">
-            <Download size={13} /> PPT
-          </button>
+          <div className="flex items-center gap-2 shrink-0 ml-4">
+            <button onClick={exportarWord} disabled={exporting}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition">
+              <Download size={13} /> Word
+            </button>
+            <button onClick={exportarPpt} disabled={exporting}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition">
+              <Download size={13} /> PPT
+            </button>
+          </div>
         </div>
       </div>
 
