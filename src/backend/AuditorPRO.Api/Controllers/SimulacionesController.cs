@@ -63,13 +63,20 @@ public class SimulacionesController : ControllerBase
         [FromBody] EjecutarControlCruzadoRequest body,
         CancellationToken ct)
     {
-        var cmd = new EjecutarControlCruzadoCommand(
-            id,
-            body.Objetivo,
-            body.TipoControlCruzado ?? "COMPLETO"
-        );
-        var resultado = await _mediator.Send(cmd, ct);
-        return Ok(resultado);
+        try
+        {
+            var cmd = new EjecutarControlCruzadoCommand(
+                id,
+                body.Objetivo,
+                body.TipoControlCruzado ?? "COMPLETO"
+            );
+            var resultado = await _mediator.Send(cmd, ct);
+            return Ok(resultado);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { error = ex.Message });
+        }
     }
 }
 

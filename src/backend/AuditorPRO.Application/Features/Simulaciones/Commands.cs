@@ -127,6 +127,7 @@ public class EjecutarControlCruzadoHandler : IRequestHandler<EjecutarControlCruz
     private readonly IRepository<ConflictoSoD> _sodRepo;
     private readonly IRepository<SnapshotEntraID> _snapshotRepo;
     private readonly IRepository<RegistroEntraID> _registroEntraRepo;
+    private readonly IRepository<LoteCarga> _loteRepo;
     private readonly IHallazgoRepository _hallazgoRepo;
     private readonly ICurrentUserService _user;
     private readonly IAuditLoggerService _audit;
@@ -142,6 +143,7 @@ public class EjecutarControlCruzadoHandler : IRequestHandler<EjecutarControlCruz
         IRepository<ConflictoSoD> sodRepo,
         IRepository<SnapshotEntraID> snapshotRepo,
         IRepository<RegistroEntraID> registroEntraRepo,
+        IRepository<LoteCarga> loteRepo,
         IHallazgoRepository hallazgoRepo,
         ICurrentUserService user,
         IAuditLoggerService audit)
@@ -150,7 +152,7 @@ public class EjecutarControlCruzadoHandler : IRequestHandler<EjecutarControlCruz
         _matrizRepo = matrizRepo; _casoRepo = casoRepo; _asignRepo = asignRepo;
         _rolRepo = rolRepo; _sodRepo = sodRepo;
         _snapshotRepo = snapshotRepo; _registroEntraRepo = registroEntraRepo;
-        _hallazgoRepo = hallazgoRepo; _user = user; _audit = audit;
+        _loteRepo = loteRepo; _hallazgoRepo = hallazgoRepo; _user = user; _audit = audit;
     }
 
     public async Task<ControlCruzadoResultado> Handle(EjecutarControlCruzadoCommand request, CancellationToken ct)
@@ -158,11 +160,40 @@ public class EjecutarControlCruzadoHandler : IRequestHandler<EjecutarControlCruz
         var sim = await _simRepo.GetByIdAsync(request.SimulacionId, ct)
             ?? throw new KeyNotFoundException($"Simulación {request.SimulacionId} no encontrada.");
 
+        if (sim.Estado == EstadoSimulacion.COMPLETADA)
+            throw new InvalidOperationException(
+                "Esta simulación ya fue completada. Inicie una nueva simulación para ejecutar un nuevo análisis.");
+
         sim.Estado = EstadoSimulacion.EN_PROCESO;
         sim.Objetivo = request.Objetivo;
         sim.TipoSimulacion = request.TipoControlCruzado;
         await _simRepo.UpdateAsync(sim, ct);
         await _simRepo.SaveChangesAsync(ct);
+
+        // ── Capturar lotes vigentes al momento de la ejecución ──────────────
+        var todosLotes = await _loteRepo.GetAllAsync(ct);
+        LoteCarga? LoteVigente(string tipo) => todosLotes
+            .Where(l => l.TipoCarga == tipo && l.EsVigente)
+            .OrderByDescending(l => l.FechaCarga)
+            .FirstOrDefault();
+
+        var loteSAP      = LoteVigente("SAP_ROLES");
+        var loteMatriz   = LoteVigente("MATRIZ_PUESTOS");
+        var loteEmpleados = LoteVigente("EMPLEADOS");
+        var loteCasos    = LoteVigente("CASOS_SESUITE");
+        var loteEntraID  = LoteVigente("ENTRA_ID");
+
+        var lotesUsados = new Dictionary<string, string?>();
+        if (loteSAP      != null) lotesUsados["SAP_ROLES"]       = loteSAP.Id.ToString();
+        if (loteMatriz   != null) lotesUsados["MATRIZ_PUESTOS"]  = loteMatriz.Id.ToString();
+        if (loteEmpleados!= null) lotesUsados["EMPLEADOS"]       = loteEmpleados.Id.ToString();
+        if (loteCasos    != null) lotesUsados["CASOS_SESUITE"]   = loteCasos.Id.ToString();
+        if (loteEntraID  != null) lotesUsados["ENTRA_ID"]        = loteEntraID.Id.ToString();
+
+        // La fecha de referencia es la más antigua de los lotes usados (carga más vieja que influye)
+        var fechasLotes = new[] { loteSAP, loteMatriz, loteEmpleados, loteCasos, loteEntraID }
+            .Where(l => l != null).Select(l => l!.FechaCarga).ToList();
+        var fechaRefDatos = fechasLotes.Count > 0 ? fechasLotes.Min() : (DateTime?)null;
 
         // ── Cargar datos ────────────────────────────────────────────────────
         var usuarios    = (await _usuarioRepo.GetAllAsync(ct)).ToList();
@@ -486,6 +517,8 @@ public class EjecutarControlCruzadoHandler : IRequestHandler<EjecutarControlCruz
         sim.ControlesRojo    = porRegla.Values.Count(v => v > 0);
         sim.ControlesVerde   = porRegla.Values.Count(v => v == 0);
         sim.ResumenResultados = System.Text.Json.JsonSerializer.Serialize(porRegla);
+        sim.LotesUsadosJson  = System.Text.Json.JsonSerializer.Serialize(lotesUsados);
+        sim.FechaReferenciaDatos = fechaRefDatos;
         await _simRepo.UpdateAsync(sim, ct);
         await _simRepo.SaveChangesAsync(ct);
 
@@ -503,20 +536,189 @@ public class EjecutarControlCruzadoHandler : IRequestHandler<EjecutarControlCruz
         string? cedula = null, string? usuarioSAP = null,
         string? rolAfectado = null, string? casoSESuiteRef = null)
     {
+        var (norma, riesgo, plan) = MetadatosPorTipo(tipoHallazgo, criticidad, usuarioSAP, rolAfectado);
         return new Hallazgo
         {
-            SimulacionId = simId,
-            Titulo       = $"[{regla}] {titulo}",
-            Descripcion  = descripcion,
-            Criticidad   = criticidad,
-            Estado       = EstadoHallazgo.ABIERTO,
-            TipoHallazgo = tipoHallazgo,
-            Cedula       = cedula,
-            UsuarioSAP   = usuarioSAP?.ToUpperInvariant(),
-            RolAfectado  = rolAfectado,
+            SimulacionId   = simId,
+            Titulo         = $"[{regla}] {titulo}",
+            Descripcion    = descripcion,
+            Criticidad     = criticidad,
+            Estado         = EstadoHallazgo.ABIERTO,
+            TipoHallazgo   = tipoHallazgo,
+            Cedula         = cedula,
+            UsuarioSAP     = usuarioSAP?.ToUpperInvariant(),
+            RolAfectado    = rolAfectado,
             CasoSESuiteRef = casoSESuiteRef,
-            CreatedAt    = DateTime.UtcNow,
-            UpdatedAt    = DateTime.UtcNow,
+            NormaAfectada  = norma,
+            RiesgoAsociado = riesgo,
+            PlanAccion     = plan,
+            CreatedAt      = DateTime.UtcNow,
+            UpdatedAt      = DateTime.UtcNow,
+        };
+    }
+
+    // ─── Metadatos normativos + plan recomendado (estilo Deloitte) ────────────
+    private static (string norma, string riesgo, string plan) MetadatosPorTipo(
+        string tipoHallazgo, Criticidad criticidad, string? usuarioSAP, string? rolAfectado)
+    {
+        var uSAP  = usuarioSAP  ?? "el usuario afectado";
+        var rol   = rolAfectado ?? "el rol afectado";
+        var plazo = criticidad == Criticidad.CRITICA ? "24-48 horas (URGENTE)"
+                  : criticidad == Criticidad.MEDIA   ? "5 días hábiles"
+                                                     : "15 días hábiles";
+
+        return tipoHallazgo switch
+        {
+            "ACCESO_EX_EMPLEADO" => (
+                norma:  "ISO 27001:2022 A.5.18 / COBIT 2019 APO01.03 / SOX ITGC UC-1",
+                riesgo: "Acceso no autorizado a sistemas críticos por personal externo. "
+                      + "Riesgo de fraude, exfiltración de datos y responsabilidad regulatoria. "
+                      + "Incumplimiento de política de revocación de accesos al cese laboral.",
+                plan:   $"OBSERVACIÓN: Usuario SAP {uSAP} permanece activo en el sistema pese a haber sido dado de baja en nómina.\n\n"
+                      + "CAUSA RAÍZ: Ausencia de proceso automatizado de revocación de accesos integrado con el sistema de RRHH al momento de la terminación laboral.\n\n"
+                      + "ACCIONES REQUERIDAS:\n"
+                      + $"1. Deshabilitar inmediatamente el usuario SAP {uSAP} y su cuenta Entra ID asociada.\n"
+                      + "2. Revisar la bitácora de transacciones ejecutadas en los últimos 90 días.\n"
+                      + "3. Notificar formalmente a RRHH, Contraloría y al área propietaria del sistema.\n"
+                      + "4. Implementar integración automática entre sistema de nómina y SAP para revocación al cese.\n"
+                      + "5. Documentar la brecha y la acción correctiva en el registro de incidentes de seguridad.\n\n"
+                      + $"RESPONSABLE SUGERIDO: Administrador de Seguridad TI / RRHH\n"
+                      + $"PLAZO: {plazo}"
+            ),
+
+            "CONFLICTO_SOD" => (
+                norma:  "COBIT 2019 DSS05.04 / COSO Principio 10 (Controles de Actividad) / SOX Sección 404",
+                riesgo: "Capacidad de un único usuario para ejecutar transacciones conflictivas que eliminan "
+                      + "la barrera de control dual. Riesgo de fraude, omisión de errores y manipulación "
+                      + "no detectada de transacciones financieras o de inventario.",
+                plan:   $"OBSERVACIÓN: Usuario {uSAP} tiene asignado simultáneamente roles que crean un conflicto de Segregación de Funciones (SoD): {rol}.\n\n"
+                      + "CAUSA RAÍZ: Falta de revisión periódica de la matriz de conflictos SoD al momento de asignar roles. "
+                      + "Posible ausencia de control preventivo en el proceso de gestión de accesos.\n\n"
+                      + "ACCIONES REQUERIDAS:\n"
+                      + $"1. Analizar las transacciones ejecutadas por {uSAP} bajo los roles en conflicto (últimos 90 días).\n"
+                      + "2. Verificar si existe justificación de negocio documentada y vigente en SE Suite.\n"
+                      + "3. Si NO hay justificación: remover el rol de mayor riesgo de la asignación inmediatamente.\n"
+                      + "4. Si HAY justificación: documentar controles compensatorios formales (supervisión, revisión periódica, doble firma).\n"
+                      + "5. Revisar y actualizar la matriz de conflictos SoD para todos los usuarios del sistema.\n"
+                      + "6. Implementar alerta preventiva en el proceso de asignación de roles.\n\n"
+                      + $"RESPONSABLE SUGERIDO: Administrador SAP / Contraloría\n"
+                      + $"PLAZO: {plazo}"
+            ),
+
+            "ROL_NO_AUTORIZADO_MATRIZ" => (
+                norma:  "COBIT 2019 APO01.02 / ISO 27001:2022 A.9.2.2 / COSO Principio 10",
+                riesgo: "Usuario con accesos que exceden los definidos para su puesto en la Matriz de Puestos "
+                      + "aprobada por Contraloría. Riesgo de acceso a funciones sensibles sin justificación "
+                      + "formal y sin control compensatorio documentado.",
+                plan:   $"OBSERVACIÓN: El usuario {uSAP} tiene asignado el rol '{rol}' que no está autorizado "
+                      + "para su puesto en la Matriz de Puestos SAP aprobada por Contraloría.\n\n"
+                      + "CAUSA RAÍZ: El proceso de asignación de roles no valida en tiempo real contra la Matriz de Puestos. "
+                      + "Posible asignación manual sin aprobación formal o reasignación de puesto sin revisión de accesos.\n\n"
+                      + "ACCIONES REQUERIDAS:\n"
+                      + $"1. Verificar si el acceso tiene justificación formal vigente en SE Suite.\n"
+                      + "2. Si NO existe caso SE Suite: solicitar justificación al responsable del área en un plazo máximo de 48h.\n"
+                      + "3. Si no se justifica: remover el rol no autorizado del perfil de {uSAP}.\n"
+                      + "4. Si se justifica: abrir caso en SE Suite con aprobación de Contraloría y fecha de vencimiento.\n"
+                      + "5. Evaluar si la Matriz de Puestos requiere actualización para reflejar el cambio.\n\n"
+                      + $"RESPONSABLE SUGERIDO: Propietario del área / Administrador SAP / Contraloría\n"
+                      + $"PLAZO: {plazo}"
+            ),
+
+            "CASO_SESUITE_VENCIDO" => (
+                norma:  "COBIT 2019 APO01.03 / ISO 27001:2022 A.9.2.5 / Política de Gestión de Excepciones",
+                riesgo: "Acceso temporal otorgado por excepción continúa activo sin renovación de la aprobación. "
+                      + "El control de accesos basado en casos de excepción pierde efectividad cuando los casos vencen "
+                      + "sin revisión, perpetuando accesos no autorizados.",
+                plan:   $"OBSERVACIÓN: El usuario {uSAP} mantiene acceso al rol '{rol}' amparado en un caso SE Suite vencido.\n\n"
+                      + "CAUSA RAÍZ: Ausencia de proceso automatizado de revisión y vencimiento de casos de excepción. "
+                      + "El sistema no revoca accesos al vencer el caso en SE Suite.\n\n"
+                      + "ACCIONES REQUERIDAS:\n"
+                      + "1. Notificar al responsable del área sobre el vencimiento del caso SE Suite.\n"
+                      + "2. Determinar si el acceso temporal aún es necesario para las funciones del puesto.\n"
+                      + "3. Si sigue siendo necesario: renovar el caso en SE Suite con nueva aprobación de Contraloría.\n"
+                      + "4. Si ya no es necesario: remover el rol del perfil de usuario inmediatamente.\n"
+                      + "5. Implementar alerta automática 30 días antes del vencimiento de casos de excepción.\n\n"
+                      + $"RESPONSABLE SUGERIDO: Propietario del caso / Administrador SAP\n"
+                      + $"PLAZO: {plazo}"
+            ),
+
+            "EMPLEADO_SIN_CUENTA_SAP" => (
+                norma:  "COBIT 2019 APO01.02 / ISO 27001:2022 A.9.2.1 / Política de Aprovisionamiento de Accesos",
+                riesgo: "Empleado activo con posible uso de cuentas genéricas o de terceros para acceder a SAP, "
+                      + "lo que imposibilita la trazabilidad de operaciones y viola el principio de rendición de cuentas.",
+                plan:   "OBSERVACIÓN: Empleado activo en nómina sin cuenta SAP nominal asignada.\n\n"
+                      + "CAUSA RAÍZ: Posible fallo en el proceso de onboarding o demora en la creación de la cuenta. "
+                      + "Puede estar usando una cuenta genérica o de otro usuario.\n\n"
+                      + "ACCIONES REQUERIDAS:\n"
+                      + "1. Verificar con el área responsable si el empleado requiere acceso a SAP según sus funciones.\n"
+                      + "2. Revisar si el empleado está accediendo con credenciales de otro usuario (cuenta compartida).\n"
+                      + "3. Si requiere acceso: solicitar creación de cuenta nominal al área de TI.\n"
+                      + "4. Asignar roles según la Matriz de Puestos correspondiente.\n"
+                      + "5. Revisar y mejorar el proceso de onboarding para garantizar aprovisionamiento oportuno.\n\n"
+                      + "RESPONSABLE SUGERIDO: RRHH / Administrador SAP\n"
+                      + $"PLAZO: {plazo}"
+            ),
+
+            "SAP_ACTIVO_ENTRA_ID_DESHABILITADO" => (
+                norma:  "ISO 27001:2022 A.9.2.5 / COBIT 2019 DSS05.04 / NIST CSF PR.AC-1",
+                riesgo: "Inconsistencia entre el estado de la cuenta SAP y el directorio corporativo Entra ID. "
+                      + "El usuario puede acceder a SAP sin que el control de identidad central lo impida, "
+                      + "degradando la efectividad del gobierno de identidades.",
+                plan:   $"OBSERVACIÓN: El usuario SAP {uSAP} tiene estado ACTIVO mientras su cuenta en Azure AD (Entra ID) está DESHABILITADA.\n\n"
+                      + "CAUSA RAÍZ: Falta de sincronización automática entre el directorio Entra ID y el sistema SAP. "
+                      + "Los procesos de gestión de identidades operan de forma independiente sin verificación cruzada.\n\n"
+                      + "ACCIONES REQUERIDAS:\n"
+                      + $"1. Investigar inmediatamente el motivo de la deshabilitación en Entra ID para el usuario {uSAP}.\n"
+                      + "2. Si fue deshabilitado por salida o sanción: deshabilitar el usuario SAP de forma inmediata.\n"
+                      + "3. Revisar transacciones ejecutadas en SAP después de la fecha de deshabilitación en AD.\n"
+                      + "4. Implementar sincronización automática entre Entra ID y SAP (SCIM o SAP Identity Management).\n"
+                      + "5. Establecer revisión periódica (mínimo mensual) de coherencia entre ambos sistemas.\n\n"
+                      + "RESPONSABLE SUGERIDO: Administrador de Seguridad TI / Equipo SAP Basis\n"
+                      + $"PLAZO: {plazo}"
+            ),
+
+            "EX_EMPLEADO_ENTRA_ID_ACTIVO" => (
+                norma:  "ISO 27001:2022 A.5.18 / COBIT 2019 APO01.03 / NIST CSF PR.AC-4",
+                riesgo: "Ex-empleado con cuenta de directorio habilitada tiene acceso potencial a Microsoft 365, "
+                      + "SharePoint, Teams, correo corporativo y todas las aplicaciones integradas con Entra ID. "
+                      + "Riesgo elevado de exfiltración de información y acceso no autorizado.",
+                plan:   "OBSERVACIÓN: Ex-empleado con estado laboral BAJA o INACTIVO mantiene cuenta Entra ID habilitada.\n\n"
+                      + "CAUSA RAÍZ: El proceso de offboarding no incluye la deshabilitación oportuna de la cuenta en Azure AD. "
+                      + "Falta de integración entre el sistema de RRHH y el directorio corporativo.\n\n"
+                      + "ACCIONES REQUERIDAS:\n"
+                      + "1. Deshabilitar la cuenta en Entra ID de forma inmediata.\n"
+                      + "2. Revocar todos los tokens de acceso activos para invalidar sesiones vigentes.\n"
+                      + "3. Revisar la actividad reciente en M365, SharePoint, Teams y aplicaciones integradas.\n"
+                      + "4. Verificar si el ex-empleado tiene accesos adicionales en SAP, ERP u otros sistemas.\n"
+                      + "5. Auditar el proceso de offboarding con RRHH para incluir deshabilitación automática de AD.\n"
+                      + "6. Documentar el incidente y reportar si se detectó actividad posterior a la fecha de baja.\n\n"
+                      + "RESPONSABLE SUGERIDO: Administrador Entra ID / RRHH\n"
+                      + $"PLAZO: {plazo}"
+            ),
+
+            "EMPLEADO_SIN_CUENTA_ENTRA_ID" => (
+                norma:  "ISO 27001:2022 A.9.2.1 / COBIT 2019 APO01.02 / Política de Aprovisionamiento",
+                riesgo: "Empleado activo sin identidad digital en el directorio corporativo. Imposibilita la "
+                      + "autenticación SSO, el control de accesos centralizado y la trazabilidad de actividad "
+                      + "en aplicaciones integradas con Entra ID.",
+                plan:   "OBSERVACIÓN: Empleado activo en nómina sin cuenta en Entra ID o con EmployeeId no coincidente con cédula.\n\n"
+                      + "CAUSA RAÍZ: Posible fallo en el proceso de onboarding, error en el campo EmployeeId de Azure AD, "
+                      + "o empleado sin cuenta digital aprovisionada.\n\n"
+                      + "ACCIONES REQUERIDAS:\n"
+                      + "1. Verificar en Azure AD si existe una cuenta con el nombre del empleado y el EmployeeId correcto.\n"
+                      + "2. Si el EmployeeId está vacío o incorrecto: actualizar el campo en Azure AD con la cédula.\n"
+                      + "3. Si no existe cuenta: solicitar aprovisionamiento al área de TI a través del proceso de onboarding.\n"
+                      + "4. Revisar el proceso de onboarding para garantizar el aprovisionamiento automático con cédula como EmployeeId.\n\n"
+                      + "RESPONSABLE SUGERIDO: Administrador Entra ID / RRHH\n"
+                      + $"PLAZO: {plazo}"
+            ),
+
+            _ => (
+                norma:  "ISO 27001:2022 / COBIT 2019 / COSO",
+                riesgo: "Hallazgo de control identificado en la revisión de accesos del sistema.",
+                plan:   "Revisar el hallazgo, identificar la causa raíz y definir acciones correctivas con el área responsable.\n\n"
+                      + $"PLAZO SUGERIDO: {plazo}"
+            )
         };
     }
 }

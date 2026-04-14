@@ -6,7 +6,7 @@ import {
   type SimulacionListDto, type ControlCruzadoResultado
 } from '../api/simulaciones';
 import { toast } from 'sonner';
-import { PlayCircle, XCircle, ChevronRight, ShieldAlert, RefreshCw, X } from 'lucide-react';
+import { PlayCircle, XCircle, ChevronRight, ShieldAlert, RefreshCw, X, FileSearch } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 
 const estadoColor: Record<string, string> = {
@@ -32,7 +32,10 @@ export function Simulaciones() {
   const [controlResultado, setControlResultado] = useState<ControlCruzadoResultado | null>(null);
   const [objetivo, setObjetivo] = useState('');
   const [tipoControl, setTipoControl] = useState<string>('COMPLETO');
-  const { register, handleSubmit, reset } = useForm();
+  const hoy = new Date().toISOString().split('T')[0];
+  const { register, handleSubmit, reset } = useForm<{ nombre: string; periodoInicio: string; periodoFin: string }>({
+    defaultValues: { nombre: '', periodoInicio: hoy, periodoFin: hoy },
+  });
   const navigate = useNavigate();
 
   const load = () => {
@@ -44,14 +47,14 @@ export function Simulaciones() {
 
   useEffect(() => { load(); }, []);
 
-  const onSubmit = async (data: Record<string, unknown>) => {
+  const onSubmit = async (data: { nombre: string; periodoInicio: string; periodoFin: string }) => {
     try {
       await iniciarSimulacion({
-        nombre: data.nombre as string,
+        nombre: data.nombre,
         tipo: 'MANUAL',
         sociedadIds: [1],
-        periodoInicio: data.periodoInicio as string,
-        periodoFin: data.periodoFin as string,
+        periodoInicio: data.periodoInicio,
+        periodoFin: data.periodoFin,
       });
       toast.success('Simulación creada');
       setShowForm(false);
@@ -90,8 +93,14 @@ export function Simulaciones() {
       setControlResultado(res);
       toast.success(`Control cruzado completado: ${res.totalHallazgos} hallazgos`);
       load();
-    } catch {
-      toast.error('Error al ejecutar el motor de control cruzado');
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      if (msg) {
+        toast.error(msg);
+        setShowControlModal(null);
+      } else {
+        toast.error('Error al ejecutar el motor de control cruzado');
+      }
     } finally {
       setEjecutandoId(null);
     }
@@ -288,8 +297,18 @@ export function Simulaciones() {
                   <td className="px-4 py-3 text-gray-500">{new Date(s.iniciadaAt).toLocaleDateString('es-CR')}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2 justify-end">
-                      {/* Motor de Control Cruzado — disponible cuando la simulación existe */}
-                      {(s.estado === 'PENDIENTE' || s.estado === 'COMPLETADA') && (
+                      {/* COMPLETADA: solo ver hallazgos — no se puede re-ejecutar */}
+                      {s.estado === 'COMPLETADA' && (
+                        <button
+                          title="Ver Hallazgos"
+                          onClick={e => { e.stopPropagation(); navigate(`/hallazgos?simulacionId=${s.id}`); }}
+                          className="text-green-500 hover:text-green-700 transition"
+                        >
+                          <FileSearch size={15} />
+                        </button>
+                      )}
+                      {/* Motor de Control Cruzado — solo disponible en PENDIENTE */}
+                      {s.estado === 'PENDIENTE' && (
                         <button
                           title="Ejecutar Motor de Control Cruzado"
                           onClick={e => { e.stopPropagation(); abrirControlModal(s.id); }}

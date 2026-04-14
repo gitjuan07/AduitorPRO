@@ -32,6 +32,7 @@ public class AppDbContext : DbContext
     public DbSet<BaseConocimiento> BaseConocimiento => Set<BaseConocimiento>();
     public DbSet<SnapshotEntraID> SnapshotsEntraID => Set<SnapshotEntraID>();
     public DbSet<RegistroEntraID> RegistrosEntraID => Set<RegistroEntraID>();
+    public DbSet<LoteCarga> LotesCarga => Set<LoteCarga>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -129,6 +130,16 @@ public class AppDbContext : DbContext
              .WithMany(s => s.Registros)
              .HasForeignKey(r => r.SnapshotId)
              .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<LoteCarga>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.TipoCarga, x.SociedadCodigo, x.FechaCarga });
+            e.HasIndex(x => new { x.TipoCarga, x.EsVigente });
+            e.Property(x => x.TipoCarga).HasMaxLength(30).IsRequired();
+            e.Property(x => x.SociedadCodigo).HasMaxLength(10);
+            e.Property(x => x.SociedadNombre).HasMaxLength(200);
         });
 
         modelBuilder.Entity<FuenteDatoSimulacion>(e =>

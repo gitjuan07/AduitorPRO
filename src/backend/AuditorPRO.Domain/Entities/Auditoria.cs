@@ -65,6 +65,10 @@ public class SimulacionAuditoria : BaseEntity
     public string? TipoSimulacion { get; set; }
     /// <summary>Resumen JSON de resultados del motor de control cruzado</summary>
     public string? ResumenResultados { get; set; }
+    /// <summary>Fecha de referencia de los datos usados (fecha del lote más reciente al momento de ejecutar)</summary>
+    public DateTime? FechaReferenciaDatos { get; set; }
+    /// <summary>JSON: { "SAP_ROLES": "guid", "MATRIZ_PUESTOS": "guid", "EMPLEADOS": "guid", ... }</summary>
+    public string? LotesUsadosJson { get; set; }
     /// <summary>Total de hallazgos marcados como CRITICO generados por esta simulación</summary>
     public int TotalCriticos { get; set; }
     public ICollection<ResultadoControl> Resultados { get; set; } = [];

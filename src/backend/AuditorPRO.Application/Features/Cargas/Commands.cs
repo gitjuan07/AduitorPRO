@@ -15,7 +15,9 @@ public record CargarEmpleadosCommand(
     Stream Contenido,
     string NombreArchivo,
     string ContentType,
-    int SociedadId
+    int SociedadId,
+    string? SociedadCodigo = null,
+    string? SociedadNombre = null
 ) : IRequest<CargaResultado>;
 
 public class CargaResultado
@@ -25,6 +27,11 @@ public class CargaResultado
     public int Actualizados { get; set; }
     public int Errores { get; set; }
     public List<string> DetalleErrores { get; set; } = [];
+    /// <summary>ID del LoteCarga creado para esta carga</summary>
+    public Guid? LoteId { get; set; }
+    public DateTime? FechaCarga { get; set; }
+    public string? SociedadCodigo { get; set; }
+    public string? SociedadNombre { get; set; }
 }
 
 public class CargarEmpleadosValidator : AbstractValidator<CargarEmpleadosCommand>
@@ -38,18 +45,19 @@ public class CargarEmpleadosValidator : AbstractValidator<CargarEmpleadosCommand
         RuleFor(x => x.NombreArchivo).NotEmpty();
         RuleFor(x => x.ContentType).Must(t => AllowedTypes.Contains(t))
             .WithMessage("Solo se aceptan archivos Excel (.xlsx) o CSV.");
-        RuleFor(x => x.SociedadId).GreaterThan(0);
+        // SociedadId puede ser 0 si no se especifica sociedad
     }
 }
 
 public class CargarEmpleadosHandler : IRequestHandler<CargarEmpleadosCommand, CargaResultado>
 {
     private readonly IRepository<EmpleadoMaestro> _repo;
+    private readonly IRepository<LoteCarga> _lotes;
     private readonly ICurrentUserService _user;
     private readonly IAuditLoggerService _audit;
 
-    public CargarEmpleadosHandler(IRepository<EmpleadoMaestro> repo, ICurrentUserService user, IAuditLoggerService audit)
-    { _repo = repo; _user = user; _audit = audit; }
+    public CargarEmpleadosHandler(IRepository<EmpleadoMaestro> repo, IRepository<LoteCarga> lotes, ICurrentUserService user, IAuditLoggerService audit)
+    { _repo = repo; _lotes = lotes; _user = user; _audit = audit; }
 
     public async Task<CargaResultado> Handle(CargarEmpleadosCommand request, CancellationToken ct)
     {
@@ -87,7 +95,7 @@ public class CargarEmpleadosHandler : IRequestHandler<CargarEmpleadosCommand, Ca
                         NumeroEmpleado = fila.NumeroEmpleado,
                         NombreCompleto = fila.NombreCompleto,
                         CorreoCorporativo = fila.Email,
-                        SociedadId = request.SociedadId,
+                        SociedadId = request.SociedadId > 0 ? request.SociedadId : null,
                         EstadoLaboral = fila.Activo ? EstadoLaboral.ACTIVO : EstadoLaboral.BAJA_PROCESADA,
                         FechaIngreso = fila.FechaIngreso.HasValue ? DateOnly.FromDateTime(fila.FechaIngreso.Value) : DateOnly.FromDateTime(DateTime.UtcNow),
                         CreatedBy = _user.Email
@@ -115,6 +123,13 @@ public class CargarEmpleadosHandler : IRequestHandler<CargarEmpleadosCommand, Ca
             resultado.DetalleErrores.Insert(0, $"Error al guardar: {ex.InnerException?.Message ?? ex.Message}");
             return resultado;
         }
+
+        var lote = await LoteHelper.CrearLoteAsync(
+            _lotes, "EMPLEADOS",
+            request.SociedadCodigo, request.SociedadNombre,
+            request.NombreArchivo, resultado, _user.Email, ct);
+        resultado.LoteId = lote.Id; resultado.FechaCarga = lote.FechaCarga;
+        resultado.SociedadCodigo = lote.SociedadCodigo; resultado.SociedadNombre = lote.SociedadNombre;
 
         await _audit.LogAsync(_user.UserId, _user.Email, "CARGA_EMPLEADOS", "EmpleadoMaestro",
             null, datosDespues: new { resultado.Insertados, resultado.Actualizados, resultado.Errores }, ct: ct);
@@ -182,17 +197,20 @@ public record CargarUsuariosSistemaCommand(
     Stream Contenido,
     string NombreArchivo,
     string ContentType,
-    string Sistema
+    string Sistema,
+    string? SociedadCodigo = null,
+    string? SociedadNombre = null
 ) : IRequest<CargaResultado>;
 
 public class CargarUsuariosSistemaHandler : IRequestHandler<CargarUsuariosSistemaCommand, CargaResultado>
 {
     private readonly IRepository<UsuarioSistema> _repo;
+    private readonly IRepository<LoteCarga> _lotes;
     private readonly ICurrentUserService _user;
     private readonly IAuditLoggerService _audit;
 
-    public CargarUsuariosSistemaHandler(IRepository<UsuarioSistema> repo, ICurrentUserService user, IAuditLoggerService audit)
-    { _repo = repo; _user = user; _audit = audit; }
+    public CargarUsuariosSistemaHandler(IRepository<UsuarioSistema> repo, IRepository<LoteCarga> lotes, ICurrentUserService user, IAuditLoggerService audit)
+    { _repo = repo; _lotes = lotes; _user = user; _audit = audit; }
 
     public async Task<CargaResultado> Handle(CargarUsuariosSistemaCommand request, CancellationToken ct)
     {
@@ -242,6 +260,14 @@ public class CargarUsuariosSistemaHandler : IRequestHandler<CargarUsuariosSistem
         }
 
         await _repo.SaveChangesAsync(ct);
+
+        var lote = await LoteHelper.CrearLoteAsync(
+            _lotes, "SAP_ROLES",
+            request.SociedadCodigo, request.SociedadNombre,
+            request.NombreArchivo, resultado, _user.Email, ct);
+        resultado.LoteId = lote.Id; resultado.FechaCarga = lote.FechaCarga;
+        resultado.SociedadCodigo = lote.SociedadCodigo; resultado.SociedadNombre = lote.SociedadNombre;
+
         await _audit.LogAsync(_user.UserId, _user.Email, "CARGA_USUARIOS_SISTEMA", "UsuarioSistema",
             null, datosDespues: new { Sistema = request.Sistema, resultado.Insertados, resultado.Actualizados }, ct: ct);
 
@@ -285,7 +311,9 @@ public record CargarRolesSAPCommand(
     Stream Contenido,
     string NombreArchivo,
     string ContentType,
-    string Sistema
+    string Sistema,
+    string? SociedadCodigo = null,
+    string? SociedadNombre = null
 ) : IRequest<CargaResultado>;
 
 public class CargarRolesSAPHandler : IRequestHandler<CargarRolesSAPCommand, CargaResultado>
@@ -293,6 +321,7 @@ public class CargarRolesSAPHandler : IRequestHandler<CargarRolesSAPCommand, Carg
     private readonly IRepository<UsuarioSistema> _usuarioRepo;
     private readonly IRepository<RolSistema> _rolRepo;
     private readonly IRepository<AsignacionRolUsuario> _asignRepo;
+    private readonly IRepository<LoteCarga> _lotes;
     private readonly ICurrentUserService _user;
     private readonly IAuditLoggerService _audit;
 
@@ -300,9 +329,10 @@ public class CargarRolesSAPHandler : IRequestHandler<CargarRolesSAPCommand, Carg
         IRepository<UsuarioSistema> usuarioRepo,
         IRepository<RolSistema> rolRepo,
         IRepository<AsignacionRolUsuario> asignRepo,
+        IRepository<LoteCarga> lotes,
         ICurrentUserService user,
         IAuditLoggerService audit)
-    { _usuarioRepo = usuarioRepo; _rolRepo = rolRepo; _asignRepo = asignRepo; _user = user; _audit = audit; }
+    { _usuarioRepo = usuarioRepo; _rolRepo = rolRepo; _asignRepo = asignRepo; _lotes = lotes; _user = user; _audit = audit; }
 
     public async Task<CargaResultado> Handle(CargarRolesSAPCommand request, CancellationToken ct)
     {
@@ -477,6 +507,13 @@ public class CargarRolesSAPHandler : IRequestHandler<CargarRolesSAPCommand, Carg
             resultado.DetalleErrores.Insert(0, $"Error al guardar asignaciones: {ex.InnerException?.Message ?? ex.Message}");
         }
 
+        var lote = await LoteHelper.CrearLoteAsync(
+            _lotes, "SAP_ROLES",
+            request.SociedadCodigo, request.SociedadNombre,
+            request.NombreArchivo, resultado, _user.Email, ct);
+        resultado.LoteId = lote.Id; resultado.FechaCarga = lote.FechaCarga;
+        resultado.SociedadCodigo = lote.SociedadCodigo; resultado.SociedadNombre = lote.SociedadNombre;
+
         await _audit.LogAsync(_user.UserId, _user.Email, "CARGA_ROLES_SAP", "AsignacionRolUsuario",
             null, datosDespues: new { Sistema = request.Sistema, resultado.Insertados, resultado.Errores }, ct: ct);
 
@@ -573,17 +610,20 @@ public class CargarRolesSAPHandler : IRequestHandler<CargarRolesSAPCommand, Carg
 public record CargarMatrizPuestosCommand(
     Stream Contenido,
     string NombreArchivo,
-    string ContentType
+    string ContentType,
+    string? SociedadCodigo = null,
+    string? SociedadNombre = null
 ) : IRequest<CargaResultado>;
 
 public class CargarMatrizPuestosHandler : IRequestHandler<CargarMatrizPuestosCommand, CargaResultado>
 {
     private readonly IRepository<MatrizPuestoSAP> _repo;
+    private readonly IRepository<LoteCarga> _lotes;
     private readonly ICurrentUserService _user;
     private readonly IAuditLoggerService _audit;
 
-    public CargarMatrizPuestosHandler(IRepository<MatrizPuestoSAP> repo, ICurrentUserService user, IAuditLoggerService audit)
-    { _repo = repo; _user = user; _audit = audit; }
+    public CargarMatrizPuestosHandler(IRepository<MatrizPuestoSAP> repo, IRepository<LoteCarga> lotes, ICurrentUserService user, IAuditLoggerService audit)
+    { _repo = repo; _lotes = lotes; _user = user; _audit = audit; }
 
     public async Task<CargaResultado> Handle(CargarMatrizPuestosCommand request, CancellationToken ct)
     {
@@ -673,6 +713,17 @@ public class CargarMatrizPuestosHandler : IRequestHandler<CargarMatrizPuestosCom
                 return resultado;
             }
         }
+
+        // Crear lote de carga
+        var lote = await LoteHelper.CrearLoteAsync(
+            _lotes, "MATRIZ_PUESTOS",
+            request.SociedadCodigo, request.SociedadNombre,
+            request.NombreArchivo, resultado, _user.Email, ct);
+
+        resultado.LoteId        = lote.Id;
+        resultado.FechaCarga    = lote.FechaCarga;
+        resultado.SociedadCodigo = lote.SociedadCodigo;
+        resultado.SociedadNombre = lote.SociedadNombre;
 
         await _audit.LogAsync(_user.UserId, _user.Email, "CARGA_MATRIZ_PUESTOS", "MatrizPuestoSAP",
             null, datosDespues: new { resultado.Insertados, resultado.Actualizados }, ct: ct);
@@ -778,17 +829,20 @@ public class CargarMatrizPuestosHandler : IRequestHandler<CargarMatrizPuestosCom
 public record CargarCasosSESuiteCommand(
     Stream Contenido,
     string NombreArchivo,
-    string ContentType
+    string ContentType,
+    string? SociedadCodigo = null,
+    string? SociedadNombre = null
 ) : IRequest<CargaResultado>;
 
 public class CargarCasosSESuiteHandler : IRequestHandler<CargarCasosSESuiteCommand, CargaResultado>
 {
     private readonly IRepository<CasoSESuite> _repo;
+    private readonly IRepository<LoteCarga> _lotes;
     private readonly ICurrentUserService _user;
     private readonly IAuditLoggerService _audit;
 
-    public CargarCasosSESuiteHandler(IRepository<CasoSESuite> repo, ICurrentUserService user, IAuditLoggerService audit)
-    { _repo = repo; _user = user; _audit = audit; }
+    public CargarCasosSESuiteHandler(IRepository<CasoSESuite> repo, IRepository<LoteCarga> lotes, ICurrentUserService user, IAuditLoggerService audit)
+    { _repo = repo; _lotes = lotes; _user = user; _audit = audit; }
 
     public async Task<CargaResultado> Handle(CargarCasosSESuiteCommand request, CancellationToken ct)
     {
@@ -879,6 +933,13 @@ public class CargarCasosSESuiteHandler : IRequestHandler<CargarCasosSESuiteComma
                 return resultado;
             }
         }
+
+        var lote = await LoteHelper.CrearLoteAsync(
+            _lotes, "CASOS_SESUITE",
+            request.SociedadCodigo, request.SociedadNombre,
+            request.NombreArchivo, resultado, _user.Email, ct);
+        resultado.LoteId = lote.Id; resultado.FechaCarga = lote.FechaCarga;
+        resultado.SociedadCodigo = lote.SociedadCodigo; resultado.SociedadNombre = lote.SociedadNombre;
 
         await _audit.LogAsync(_user.UserId, _user.Email, "CARGA_CASOS_SESUITE", "CasoSESuite",
             null, datosDespues: new { resultado.Insertados, resultado.Actualizados }, ct: ct);

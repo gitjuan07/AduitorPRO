@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { cargasApi, type CargaResultado, type SnapshotEntraIDDto, type MatrizPuestoDto } from '../api/cargas';
+import { cargasApi, type CargaResultado, type SnapshotEntraIDDto, type MatrizPuestoDto, type LoteCargaDto } from '../api/cargas';
+import api from '../api/client';
 import { toast } from 'sonner';
 import {
   Upload, Download, FileSpreadsheet, Users, ShieldCheck,
   CheckCircle2, XCircle, AlertTriangle, RefreshCw, X, LayoutGrid, Briefcase,
-  MonitorSmartphone, Calendar, Hash, DatabaseZap, Search, ChevronLeft, ChevronRight, Eye
+  MonitorSmartphone, Calendar, Hash, DatabaseZap, Search, ChevronLeft, ChevronRight, Eye,
+  Building2, History, BadgeCheck, Clock
 } from 'lucide-react';
 
 type TipoCarga = 'empleados' | 'sapRoles' | 'matrizPuestos' | 'casosSeSuite' | 'entraID';
@@ -354,9 +356,129 @@ function MatrizVisor({ onRecargar }: { onRecargar?: number }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Historial de Lotes
+// ─────────────────────────────────────────────────────────────────────────────
+const TIPO_LABEL: Record<string, string> = {
+  SAP_ROLES: 'SAP Roles',
+  MATRIZ_PUESTOS: 'Matriz Puestos',
+  EMPLEADOS: 'Empleados',
+  CASOS_SESUITE: 'SE Suite',
+  ENTRA_ID: 'Entra ID',
+};
+const TIPO_COLOR: Record<string, string> = {
+  SAP_ROLES: 'bg-emerald-100 text-emerald-700',
+  MATRIZ_PUESTOS: 'bg-violet-100 text-violet-700',
+  EMPLEADOS: 'bg-blue-100 text-blue-700',
+  CASOS_SESUITE: 'bg-amber-100 text-amber-700',
+  ENTRA_ID: 'bg-sky-100 text-sky-700',
+};
+
+function LotesHistorial({ refrescar }: { refrescar?: number }) {
+  const [lotes, setLotes] = useState<LoteCargaDto[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const cargar = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await cargasApi.getLotes({ limit: 100 });
+      setLotes(data);
+    } catch {
+      toast.error('Error al cargar historial de lotes');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { cargar(); }, [refrescar]);
+
+  const fmtFecha = (iso: string) =>
+    new Date(iso).toLocaleString('es-CR', {
+      day: '2-digit', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    });
+
+  return (
+    <div className="mt-10">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+          <History size={15} className="text-gray-500" />
+          Historial de Cargas (Lotes)
+        </h2>
+        <button onClick={cargar}
+          className="flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600 transition">
+          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refrescar
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-10 text-gray-400 text-sm gap-2">
+          <RefreshCw size={16} className="animate-spin" /> Cargando historial...
+        </div>
+      ) : lotes.length === 0 ? (
+        <div className="text-center py-10 text-gray-400 text-sm border border-dashed border-gray-200 rounded-xl">
+          No hay lotes de carga registrados todavía.
+        </div>
+      ) : (
+        <div className="border border-gray-200 rounded-xl overflow-hidden">
+          <table className="w-full text-xs min-w-[750px]">
+            <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+              <tr>
+                {['Tipo', 'Sociedad', 'Archivo', 'Fecha carga', 'Total', 'Insert.', 'Actual.', 'Errores', 'Estado'].map(h => (
+                  <th key={h} className="text-left px-3 py-2 font-semibold text-gray-600 whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {lotes.map(l => (
+                <tr key={l.id} className={`hover:bg-gray-50 transition-colors ${!l.esVigente ? 'opacity-50' : ''}`}>
+                  <td className="px-3 py-2">
+                    <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${TIPO_COLOR[l.tipoCarga] ?? 'bg-gray-100 text-gray-700'}`}>
+                      {TIPO_LABEL[l.tipoCarga] ?? l.tipoCarga}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-gray-700">
+                    {l.sociedadNombre
+                      ? <span title={l.sociedadCodigo ?? ''}>{l.sociedadNombre}</span>
+                      : <span className="text-gray-400">—</span>}
+                  </td>
+                  <td className="px-3 py-2 text-gray-500 max-w-[160px] truncate" title={l.nombreArchivo ?? ''}>
+                    {l.nombreArchivo ?? '—'}
+                  </td>
+                  <td className="px-3 py-2 text-gray-600 whitespace-nowrap">
+                    <span className="flex items-center gap-1">
+                      <Clock size={11} className="text-gray-400" />
+                      {fmtFecha(l.fechaCarga)}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-gray-700 font-mono">{l.totalRegistros.toLocaleString()}</td>
+                  <td className="px-3 py-2 text-green-700 font-mono">{l.insertados.toLocaleString()}</td>
+                  <td className="px-3 py-2 text-blue-700 font-mono">{l.actualizados.toLocaleString()}</td>
+                  <td className="px-3 py-2 font-mono">
+                    <span className={l.errores > 0 ? 'text-red-600' : 'text-gray-400'}>{l.errores}</span>
+                  </td>
+                  <td className="px-3 py-2">
+                    {l.esVigente
+                      ? <span className="flex items-center gap-1 text-green-700 font-medium">
+                          <BadgeCheck size={13} /> Vigente
+                        </span>
+                      : <span className="text-gray-400">Anterior</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Page
 // ─────────────────────────────────────────────────────────────────────────────
 const SISTEMAS = ['SAP', 'EVOLUTION', 'SE_SUITE', 'AD', 'OTRO'];
+
+interface SociedadOpcion { id: number; codigo: string; nombre: string; }
 
 export function Cargas() {
   const [tipo, setTipo] = useState<TipoCarga>('empleados');
@@ -368,7 +490,15 @@ export function Cargas() {
   const [descargandoId, setDescargandoId] = useState<string | null>(null);
   const [ultimoSnapshot, setUltimoSnapshot] = useState<{ id: string; nombre: string } | null>(null);
   const [recargarVisor, setRecargarVisor] = useState(0);
+  const [recargarLotes, setRecargarLotes] = useState(0);
+  const [sociedadCodigo, setSociedadCodigo] = useState('');
+  const [sociedades, setSociedades] = useState<SociedadOpcion[]>([]);
   const cfg = TIPO_CONFIG[tipo];
+
+  // Cargar lista de sociedades activas al montar
+  useEffect(() => {
+    api.get('/sociedades').then(r => setSociedades(r.data)).catch(() => {});
+  }, []);
 
   const setFile = (file: File) => setState(s => ({ ...s, file, resultado: null }));
   const clearFile = () => setState(s => ({ ...s, file: null, resultado: null }));
@@ -412,17 +542,20 @@ export function Cargas() {
         return;
       }
 
+      const cod = sociedadCodigo || undefined;
       const resultado =
-        tipo === 'empleados'     ? await cargasApi.cargarEmpleados(archivo, 1) :
-        tipo === 'sapRoles'      ? await cargasApi.cargarRolesSAP(archivo, sistema) :
-        tipo === 'matrizPuestos' ? await cargasApi.cargarMatrizPuestos(archivo) :
-                                   await cargasApi.cargarCasosSeSuite(archivo);
+        tipo === 'empleados'     ? await cargasApi.cargarEmpleados(archivo, cod) :
+        tipo === 'sapRoles'      ? await cargasApi.cargarRolesSAP(archivo, sistema, cod) :
+        tipo === 'matrizPuestos' ? await cargasApi.cargarMatrizPuestos(archivo, cod) :
+                                   await cargasApi.cargarCasosSeSuite(archivo, cod);
       setState(s => ({ ...s, resultado, file: null }));
       if (resultado.errores === 0) {
         toast.success(`Carga completada: ${resultado.insertados} nuevos, ${resultado.actualizados} actualizados`);
         if (tipo === 'matrizPuestos') setRecargarVisor(v => v + 1);
+        setRecargarLotes(v => v + 1);
       } else {
         toast.warning(`Carga con errores: ${resultado.errores} filas no procesadas`);
+        setRecargarLotes(v => v + 1);
       }
     } catch {
       toast.error('Error al procesar el archivo');
@@ -510,6 +643,24 @@ export function Cargas() {
             className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             {SISTEMAS.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+      )}
+
+      {/* Selector de Sociedad (para cargas que no sean EntraID) */}
+      {tipo !== 'entraID' && (
+        <div className="mb-4 flex items-center gap-3">
+          <Building2 size={15} className="text-gray-500 flex-shrink-0" />
+          <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Sociedad SAP:</label>
+          <select
+            value={sociedadCodigo}
+            onChange={e => setSociedadCodigo(e.target.value)}
+            className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">— Sin especificar —</option>
+            {sociedades.map(s => (
+              <option key={s.codigo} value={s.codigo}>{s.codigo} · {s.nombre}</option>
+            ))}
           </select>
         </div>
       )}
@@ -607,6 +758,9 @@ export function Cargas() {
       {tipo === 'matrizPuestos' && (
         <MatrizVisor onRecargar={recargarVisor} />
       )}
+
+      {/* Historial de Lotes de Carga (siempre visible) */}
+      <LotesHistorial refrescar={recargarLotes} />
 
       {/* Historial de snapshots Entra ID */}
       {tipo === 'entraID' && (

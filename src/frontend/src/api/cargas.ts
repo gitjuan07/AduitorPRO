@@ -9,19 +9,20 @@ export interface CargaResultado {
 }
 
 export const cargasApi = {
-  cargarEmpleados: (file: File, sociedadId: number): Promise<CargaResultado> => {
+  cargarEmpleados: (file: File, sociedadCodigo?: string): Promise<CargaResultado> => {
     const form = new FormData();
     form.append('archivo', file);
-    form.append('sociedadId', String(sociedadId));
+    if (sociedadCodigo) form.append('sociedadCodigo', sociedadCodigo);
     return api.post('/cargas/empleados', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }).then(r => r.data);
   },
 
-  cargarUsuarios: (file: File, sistema: string): Promise<CargaResultado> => {
+  cargarUsuarios: (file: File, sistema: string, sociedadCodigo?: string): Promise<CargaResultado> => {
     const form = new FormData();
     form.append('archivo', file);
     form.append('sistema', sistema);
+    if (sociedadCodigo) form.append('sociedadCodigo', sociedadCodigo);
     return api.post('/cargas/usuarios-sistema', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }).then(r => r.data);
@@ -47,10 +48,11 @@ export const cargasApi = {
     URL.revokeObjectURL(url);
   },
 
-  cargarRolesSAP: (file: File, sistema: string): Promise<CargaResultado> => {
+  cargarRolesSAP: (file: File, sistema: string, sociedadCodigo?: string): Promise<CargaResultado> => {
     const form = new FormData();
     form.append('archivo', file);
     form.append('sistema', sistema);
+    if (sociedadCodigo) form.append('sociedadCodigo', sociedadCodigo);
     return api.post('/cargas/sap-roles', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }).then(r => r.data);
@@ -66,9 +68,10 @@ export const cargasApi = {
     URL.revokeObjectURL(url);
   },
 
-  cargarMatrizPuestos: (file: File): Promise<CargaResultado> => {
+  cargarMatrizPuestos: (file: File, sociedadCodigo?: string): Promise<CargaResultado> => {
     const form = new FormData();
     form.append('archivo', file);
+    if (sociedadCodigo) form.append('sociedadCodigo', sociedadCodigo);
     return api.post('/cargas/matriz-puestos', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }).then(r => r.data);
@@ -84,9 +87,10 @@ export const cargasApi = {
     URL.revokeObjectURL(url);
   },
 
-  cargarCasosSeSuite: (file: File): Promise<CargaResultado> => {
+  cargarCasosSeSuite: (file: File, sociedadCodigo?: string): Promise<CargaResultado> => {
     const form = new FormData();
     form.append('archivo', file);
+    if (sociedadCodigo) form.append('sociedadCodigo', sociedadCodigo);
     return api.post('/cargas/casos-sesuite', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }).then(r => r.data);
@@ -101,6 +105,10 @@ export const cargasApi = {
     a.click();
     URL.revokeObjectURL(url);
   },
+
+  // ── Lotes de Carga ────────────────────────────────────────────────────────
+  getLotes: (params?: { tipoCarga?: string; sociedadCodigo?: string; limit?: number }): Promise<LoteCargaDto[]> =>
+    api.get('/cargas/lotes', { params }).then(r => r.data),
 
   // ── Visor Matriz de Puestos ───────────────────────────────────────────────
   getMatrizPuestos: (params: {
@@ -142,6 +150,21 @@ export const cargasApi = {
     URL.revokeObjectURL(url);
   },
 };
+
+export interface LoteCargaDto {
+  id: string;
+  tipoCarga: string;
+  fechaCarga: string;
+  sociedadCodigo?: string;
+  sociedadNombre?: string;
+  nombreArchivo?: string;
+  totalRegistros: number;
+  insertados: number;
+  actualizados: number;
+  errores: number;
+  cargadoPor?: string;
+  esVigente: boolean;
+}
 
 export interface MatrizPuestoDto {
   usuarioSAP: string;

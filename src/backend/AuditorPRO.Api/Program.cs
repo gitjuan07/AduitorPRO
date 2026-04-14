@@ -125,28 +125,30 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 
-    // Auto-migrate/create + seed in development
-    if (builder.Configuration.GetValue<bool>("DevMode:AutoMigrate"))
+    if (builder.Configuration.GetValue<bool>("DevMode:SeedData"))
     {
         using var scope = app.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-
-        // SQLite (local dev): EnsureCreated — no migration tracking needed
-        // SQL Server (staging/prod): MigrateAsync — apply pending migrations
-        var connStr = builder.Configuration.GetConnectionString("DefaultConnection") ?? "";
-        if (connStr.StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase))
-            await db.Database.EnsureCreatedAsync();
-        else
-            await db.Database.MigrateAsync();
-
-        if (builder.Configuration.GetValue<bool>("DevMode:SeedData"))
-        {
-            await AuditorPRO.Infrastructure.Persistence.SeedData.SeedAsync(db);
-        }
+        await AuditorPRO.Infrastructure.Persistence.SeedData.SeedAsync(db);
     }
 }
-// Producción: las migraciones se aplican vía script SQL en Azure Portal
-// (ver infra/scripts/sql/02-migrations-initial.sql)
+
+// Auto-migrar al iniciar: SQLite usa EnsureCreated, SQL Server usa MigrateAsync (idempotente)
+try
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var connStr = builder.Configuration.GetConnectionString("DefaultConnection") ?? "";
+    if (connStr.StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase))
+        await db.Database.EnsureCreatedAsync();
+    else
+        await db.Database.MigrateAsync();
+    Log.Information("Base de datos sincronizada correctamente.");
+}
+catch (Exception ex)
+{
+    Log.Warning(ex, "No se pudo aplicar migraciones al iniciar. La aplicación continuará.");
+}
 
 app.UseHttpsRedirection();
 app.UseCors("FrontendPolicy");

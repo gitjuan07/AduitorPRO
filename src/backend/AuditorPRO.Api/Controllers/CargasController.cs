@@ -1,4 +1,5 @@
 using AuditorPRO.Application.Features.Cargas;
+using AuditorPRO.Application.Features.Sociedades;
 using ClosedXML.Excel;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
@@ -13,6 +14,36 @@ public class CargasController : ControllerBase
 {
     private readonly IMediator _mediator;
     public CargasController(IMediator mediator) => _mediator = mediator;
+
+    // ── Lotes de carga ────────────────────────────────────────────────────────
+
+    [HttpGet("lotes")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetLotes(
+        [FromQuery] string? tipoCarga,
+        [FromQuery] string? sociedadCodigo,
+        [FromQuery] int limit = 50,
+        CancellationToken ct = default)
+        => Ok(await _mediator.Send(new GetLotesCargaQuery(tipoCarga, sociedadCodigo, limit), ct));
+
+    [HttpGet("lotes/ultimo")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetUltimoLote(
+        [FromQuery] string tipoCarga,
+        [FromQuery] string? sociedadCodigo,
+        CancellationToken ct = default)
+    {
+        var lote = await _mediator.Send(new GetUltimoLoteQuery(tipoCarga, sociedadCodigo), ct);
+        return lote is null ? NotFound() : Ok(lote);
+    }
+
+    // ─── Helper: resolver nombre de sociedad ─────────────────────────────────
+    private async Task<(string? codigo, string? nombre)> ResolveSociedadAsync(string? codigo, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(codigo)) return (null, null);
+        var soc = await _mediator.Send(new GetSociedadByCodigoQuery(codigo.ToUpperInvariant()), ct);
+        return (codigo.ToUpperInvariant(), soc?.Nombre ?? codigo.ToUpperInvariant());
+    }
 
     [HttpGet("plantilla/empleados")]
     [AllowAnonymous]
@@ -109,15 +140,21 @@ public class CargasController : ControllerBase
     [RequestSizeLimit(10_485_760)] // 10 MB
     public async Task<IActionResult> CargarEmpleados(
         [FromForm] IFormFile archivo,
-        [FromForm] int sociedadId,
+        [FromForm] string? sociedadCodigo,
         CancellationToken ct)
     {
-        var cmd = new CargarEmpleadosCommand(
-            archivo.OpenReadStream(),
-            archivo.FileName,
-            archivo.ContentType,
-            sociedadId
-        );
+        var (cod, nom) = await ResolveSociedadAsync(sociedadCodigo, ct);
+        // Resolver ID de sociedad (0 si no se especifica — empleados sin sociedad fija)
+        int socId = 0;
+        if (!string.IsNullOrWhiteSpace(cod))
+        {
+            var soc = await _mediator.Send(new GetSociedadByCodigoQuery(cod), ct);
+            socId = soc?.Id ?? 0;
+        }
+        using var ms = new MemoryStream();
+        await archivo.CopyToAsync(ms, ct);
+        ms.Position = 0;
+        var cmd = new CargarEmpleadosCommand(ms, archivo.FileName, archivo.ContentType, socId, cod, nom);
         var resultado = await _mediator.Send(cmd, ct);
         return Ok(resultado);
     }
@@ -127,14 +164,14 @@ public class CargasController : ControllerBase
     public async Task<IActionResult> CargarUsuariosSistema(
         [FromForm] IFormFile archivo,
         [FromForm] string sistema,
+        [FromForm] string? sociedadCodigo,
         CancellationToken ct)
     {
-        var cmd = new CargarUsuariosSistemaCommand(
-            archivo.OpenReadStream(),
-            archivo.FileName,
-            archivo.ContentType,
-            sistema
-        );
+        var (cod, nom) = await ResolveSociedadAsync(sociedadCodigo, ct);
+        using var ms = new MemoryStream();
+        await archivo.CopyToAsync(ms, ct);
+        ms.Position = 0;
+        var cmd = new CargarUsuariosSistemaCommand(ms, archivo.FileName, archivo.ContentType, sistema, cod, nom);
         var resultado = await _mediator.Send(cmd, ct);
         return Ok(resultado);
     }
@@ -222,15 +259,14 @@ public class CargasController : ControllerBase
     public async Task<IActionResult> CargarRolesSAP(
         [FromForm] IFormFile archivo,
         [FromForm] string sistema,
+        [FromForm] string? sociedadCodigo,
         CancellationToken ct)
     {
-        // Leer el archivo en memoria antes de procesar para evitar que el stream
-        // se cierre durante operaciones async de larga duración (15k+ filas)
+        var (cod, nom) = await ResolveSociedadAsync(sociedadCodigo, ct);
         using var ms = new MemoryStream();
         await archivo.CopyToAsync(ms, ct);
         ms.Position = 0;
-
-        var cmd = new CargarRolesSAPCommand(ms, archivo.FileName, archivo.ContentType, sistema);
+        var cmd = new CargarRolesSAPCommand(ms, archivo.FileName, archivo.ContentType, sistema, cod, nom);
         var resultado = await _mediator.Send(cmd, ct);
         return Ok(resultado);
     }
@@ -311,12 +347,14 @@ public class CargasController : ControllerBase
     [RequestFormLimits(MultipartBodyLengthLimit = 52_428_800)]
     public async Task<IActionResult> CargarMatrizPuestos(
         [FromForm] IFormFile archivo,
+        [FromForm] string? sociedadCodigo,
         CancellationToken ct)
     {
+        var (cod, nom) = await ResolveSociedadAsync(sociedadCodigo, ct);
         var ms = new MemoryStream();
         await archivo.CopyToAsync(ms, ct);
         ms.Position = 0;
-        var cmd = new CargarMatrizPuestosCommand(ms, archivo.FileName, archivo.ContentType);
+        var cmd = new CargarMatrizPuestosCommand(ms, archivo.FileName, archivo.ContentType, cod, nom);
         var resultado = await _mediator.Send(cmd, ct);
         return Ok(resultado);
     }
@@ -377,12 +415,14 @@ public class CargasController : ControllerBase
     [RequestFormLimits(MultipartBodyLengthLimit = 52_428_800)]
     public async Task<IActionResult> CargarCasosSESuite(
         [FromForm] IFormFile archivo,
+        [FromForm] string? sociedadCodigo,
         CancellationToken ct)
     {
+        var (cod, nom) = await ResolveSociedadAsync(sociedadCodigo, ct);
         var ms = new MemoryStream();
         await archivo.CopyToAsync(ms, ct);
         ms.Position = 0;
-        var cmd = new CargarCasosSESuiteCommand(ms, archivo.FileName, archivo.ContentType);
+        var cmd = new CargarCasosSESuiteCommand(ms, archivo.FileName, archivo.ContentType, cod, nom);
         var resultado = await _mediator.Send(cmd, ct);
         return Ok(resultado);
     }
