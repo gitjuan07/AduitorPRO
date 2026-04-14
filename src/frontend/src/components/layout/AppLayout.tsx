@@ -2,7 +2,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { useMsal } from '@azure/msal-react';
 import {
   LayoutDashboard, PlayCircle, AlertTriangle, FileCheck,
-  Brain, Plug, FileText, BookOpen, LogOut, ClipboardList, Upload, Database
+  Brain, Plug, FileText, BookOpen, LogOut, ClipboardList, Upload, Database, Building2
 } from 'lucide-react';
 
 const DEV_MODE = !import.meta.env.VITE_AZURE_CLIENT_ID;
@@ -17,8 +17,9 @@ const navItems = [
   { to: '/conectores',    label: 'Conectores',       icon: <Plug            size={18} /> },
   { to: '/politicas',     label: 'Políticas',        icon: <FileText        size={18} /> },
   { to: '/bitacora',      label: 'Bitácora',         icon: <BookOpen        size={18} /> },
-  { to: '/cargas',            label: 'Cargas',             icon: <Upload    size={18} /> },
-  { to: '/base-conocimiento', label: 'Base Conocimiento',  icon: <Database  size={18} /> },
+  { to: '/cargas',            label: 'Cargas',             icon: <Upload     size={18} /> },
+  { to: '/base-conocimiento', label: 'Base Conocimiento',  icon: <Database   size={18} /> },
+  { to: '/sociedades',        label: 'Sociedades',         icon: <Building2  size={18} /> },
 ];
 
 // Sub-componente que usa useMsal — solo se monta dentro de MsalProvider

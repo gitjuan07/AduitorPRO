@@ -8,6 +8,8 @@ public static class SeedData
 {
     public static async Task SeedAsync(AppDbContext db)
     {
+        await SeedSociedadesAsync(db);
+
         if (await db.Dominios.AnyAsync()) return;
 
         // ─────────────────────────────────────────────────────────────────────
@@ -357,19 +359,52 @@ public static class SeedData
 
         db.PuntosControl.AddRange(controles);
         await db.SaveChangesAsync();
+    }
 
-        // ─────────────────────────────────────────────────────────────────────
-        // SOCIEDAD DEMO
-        // ─────────────────────────────────────────────────────────────────────
-        if (!await db.Sociedades.AnyAsync())
+    // ─────────────────────────────────────────────────────────────────────────
+    // SOCIEDADES ILG LOGISTICS — se ejecuta siempre (upsert por Codigo)
+    // ─────────────────────────────────────────────────────────────────────────
+    private static async Task SeedSociedadesAsync(AppDbContext db)
+    {
+        var todasLasSociedades = new[]
         {
-            db.Sociedades.Add(new Sociedad
-            {
-                Id     = 1,
-                Codigo = "ILG-CR",
-                Nombre = "ILG Logistics Costa Rica S.A.",
-                Activa = true,
-            });
+            new Sociedad { Codigo = "CR00", Nombre = "ILG Logistics S.A.",                          Pais = "Costa Rica",          Activa = false },
+            new Sociedad { Codigo = "CR01", Nombre = "Corporación ILG Internacional S.A.",           Pais = "Costa Rica",          Activa = true  },
+            new Sociedad { Codigo = "CR02", Nombre = "Marina Intercontinental",                      Pais = "Costa Rica",          Activa = true  },
+            new Sociedad { Codigo = "CR03", Nombre = "Servicios de Atención de Carga S.A.",          Pais = "Costa Rica",          Activa = true  },
+            new Sociedad { Codigo = "CR04", Nombre = "Servicios Neptuno",                            Pais = "Costa Rica",          Activa = true  },
+            new Sociedad { Codigo = "CR05", Nombre = "Consolidaciones ILG",                          Pais = "Costa Rica",          Activa = true  },
+            new Sociedad { Codigo = "CR06", Nombre = "Almacén Fiscal Flogar",                        Pais = "Costa Rica",          Activa = true  },
+            new Sociedad { Codigo = "CR07", Nombre = "Servinave",                                    Pais = "Costa Rica",          Activa = true  },
+            new Sociedad { Codigo = "CR08", Nombre = "TGD Soluciones",                               Pais = "Costa Rica",          Activa = true  },
+            new Sociedad { Codigo = "CR09", Nombre = "ILG Supply Chain Services",                    Pais = "Costa Rica",          Activa = true  },
+            new Sociedad { Codigo = "CR10", Nombre = "Centro de Distribución ILG Logistics",         Pais = "Costa Rica",          Activa = true  },
+            new Sociedad { Codigo = "CR12", Nombre = "ILG Logistics S.A.",                           Pais = "Costa Rica",          Activa = true  },
+            new Sociedad { Codigo = "CR14", Nombre = "Terminales de Granos ILG",                     Pais = "Costa Rica",          Activa = true  },
+            new Sociedad { Codigo = "DO01", Nombre = "ILG Logistics Dominicana",                     Pais = "República Dominicana", Activa = true  },
+            new Sociedad { Codigo = "GT01", Nombre = "ILG Logistics Guatemala",                      Pais = "Guatemala",           Activa = true  },
+            new Sociedad { Codigo = "GT02", Nombre = "TGD de Guatemala S.A.",                        Pais = "Guatemala",           Activa = true  },
+            new Sociedad { Codigo = "HN01", Nombre = "ILG Logistics de Honduras",                    Pais = "Honduras",            Activa = true  },
+            new Sociedad { Codigo = "NI01", Nombre = "ILG Logistics Nicaragua",                      Pais = "Nicaragua",           Activa = true  },
+            new Sociedad { Codigo = "PA01", Nombre = "TGD WorldWide INC",                            Pais = "Panamá",              Activa = true  },
+            new Sociedad { Codigo = "PA02", Nombre = "COLON CARGO CENTER",                           Pais = "Panamá",              Activa = true  },
+            new Sociedad { Codigo = "PA03", Nombre = "ILG Logistics de Panamá",                      Pais = "Panamá",              Activa = true  },
+            new Sociedad { Codigo = "PA04", Nombre = "4 ALTOS C-7,C-8,C-9, S.A.",                   Pais = "Panamá",              Activa = false },
+            new Sociedad { Codigo = "SV01", Nombre = "ILG Logistics El Salvador",                    Pais = "El Salvador",         Activa = true  },
+            new Sociedad { Codigo = "SV02", Nombre = "TGD El Salvador S.A. de C.V.",                 Pais = "El Salvador",         Activa = true  },
+        };
+
+        var codigosExistentes = await db.Sociedades
+            .Select(s => s.Codigo)
+            .ToHashSetAsync();
+
+        var nuevas = todasLasSociedades
+            .Where(s => !codigosExistentes.Contains(s.Codigo))
+            .ToList();
+
+        if (nuevas.Count > 0)
+        {
+            db.Sociedades.AddRange(nuevas);
             await db.SaveChangesAsync();
         }
     }

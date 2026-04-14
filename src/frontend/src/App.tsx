@@ -15,6 +15,7 @@ import { Bitacora } from './pages/Bitacora';
 import { Cargas } from './pages/Cargas';
 import { SimulacionDetalle } from './pages/SimulacionDetalle';
 import { BaseConocimiento } from './pages/BaseConocimiento';
+import { Sociedades } from './pages/Sociedades';
 import { loginRequest } from './config/auth';
 
 // Modo demo: sin Azure AD configurado, muestra el app directamente
@@ -38,6 +39,7 @@ function AppRoutes() {
           <Route path="bitacora"         element={<Bitacora />} />
           <Route path="cargas"           element={<Cargas />} />
               <Route path="base-conocimiento" element={<BaseConocimiento />} />
+          <Route path="sociedades"        element={<Sociedades />} />
         </Route>
       </Routes>
     </BrowserRouter>
