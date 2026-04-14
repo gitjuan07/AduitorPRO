@@ -53,7 +53,7 @@ public class BlobStorageService : IBlobStorageService
     public async Task<Stream> DownloadAsync(string blobUrl, CancellationToken ct = default)
     {
         EnsureConfigured();
-        var blobClient = new BlobClient(new Uri(blobUrl));
+        var blobClient = GetBlobClientFromUrl(blobUrl);
         var response = await blobClient.DownloadStreamingAsync(cancellationToken: ct);
         return response.Value.Content;
     }
@@ -61,13 +61,14 @@ public class BlobStorageService : IBlobStorageService
     public async Task DeleteAsync(string blobUrl, CancellationToken ct = default)
     {
         EnsureConfigured();
-        var blobClient = new BlobClient(new Uri(blobUrl));
+        var blobClient = GetBlobClientFromUrl(blobUrl);
         await blobClient.DeleteIfExistsAsync(cancellationToken: ct);
     }
 
     public Task<string> GenerateSasTokenAsync(string blobUrl, TimeSpan expiry, CancellationToken ct = default)
     {
-        var blobClient = new BlobClient(new Uri(blobUrl));
+        EnsureConfigured();
+        var blobClient = GetBlobClientFromUrl(blobUrl);
         var sasBuilder = new BlobSasBuilder
         {
             BlobContainerName = blobClient.BlobContainerName,
@@ -76,8 +77,24 @@ public class BlobStorageService : IBlobStorageService
             ExpiresOn = DateTimeOffset.UtcNow.Add(expiry)
         };
         sasBuilder.SetPermissions(BlobSasPermissions.Read);
-
         var sasUri = blobClient.GenerateSasUri(sasBuilder);
         return Task.FromResult(sasUri.ToString());
+    }
+
+    /// <summary>
+    /// Obtiene un BlobClient autenticado a partir de una URL de blob,
+    /// usando el _blobServiceClient con credenciales (connection string).
+    /// </summary>
+    private BlobClient GetBlobClientFromUrl(string blobUrl)
+    {
+        var uri = new Uri(blobUrl);
+        // AbsolutePath = /container/guid/filename  → split en máximo 3 partes
+        var path = uri.AbsolutePath.TrimStart('/');
+        var slash = path.IndexOf('/');
+        var containerName = slash >= 0 ? path[..slash] : path;
+        var blobName      = slash >= 0 ? path[(slash + 1)..] : string.Empty;
+        return _blobServiceClient
+            .GetBlobContainerClient(containerName)
+            .GetBlobClient(blobName);
     }
 }

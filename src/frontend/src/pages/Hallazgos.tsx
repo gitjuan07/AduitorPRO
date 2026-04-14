@@ -146,8 +146,8 @@ export function Hallazgos() {
       const fd = new FormData();
       fd.append('archivo', file);
       fd.append('hallazgoId', evidModal.id);
-      fd.append('tipoEvidencia', 'DOCUMENTO');
-      if (descEvid) fd.append('descripcionArchivo', descEvid);
+      fd.append('tipoEvidencia', 'ARCHIVO');
+      if (descEvid) fd.append('descripcion', descEvid);
       await evidenciasApi.upload(fd);
       toast.success('Evidencia subida');
       setDescEvid('');
