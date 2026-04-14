@@ -587,24 +587,29 @@ public class CargarMatrizPuestosHandler : IRequestHandler<CargarMatrizPuestosCom
 
     public async Task<CargaResultado> Handle(CargarMatrizPuestosCommand request, CancellationToken ct)
     {
-        // Misma estructura que SAP V_SAP_USR_RECERTIFICAION + FechaRevisionContraloria
-        // La Matriz de Puestos usa el mismo parser, con una columna adicional al final
-        var filas = CargarRolesSAPHandler.ParseExcel(request.Contenido);
+        const int BATCH = 500;
+        var filas = ParseExcelMatriz(request.Contenido);
         var resultado = new CargaResultado { TotalRegistros = filas.Count };
 
-        // Cargar todos los existentes para upsert por (Puesto, Rol, Transaccion)
+        // Upsert por (UsuarioSAP, Rol, Transaccion) — una fila por permiso
         var existentes = (await _repo.GetAllAsync(ct))
-            .GroupBy(m => $"{m.Puesto?.ToUpper()}|{m.Rol.ToUpper()}|{m.Transaccion?.ToUpper()}")
+            .GroupBy(m => $"{m.UsuarioSAP.ToUpper()}|{m.Rol.ToUpper()}|{m.Transaccion?.ToUpper()}")
             .ToDictionary(g => g.Key, g => g.First());
 
+        int pendientes = 0;
         foreach (var (fila, idx) in filas.Select((f, i) => (f, i + 2)))
         {
             try
             {
-                var clave = $"{fila.Puesto?.ToUpper()}|{fila.Rol.ToUpper()}|{fila.Transacciones?.ToUpper()}";
+                if (string.IsNullOrWhiteSpace(fila.UsuarioSAP) || string.IsNullOrWhiteSpace(fila.Rol))
+                {
+                    resultado.Errores++;
+                    resultado.DetalleErrores.Add($"Fila {idx}: USUARIO o ROL vacío.");
+                    continue;
+                }
 
-                // Para la Matriz, cada transacción es una fila (no se agrupan)
-                // Pero dado que ParseExcel ya agrupa, registramos una entrada por puesto+rol+transacciones
+                var clave = $"{fila.UsuarioSAP.ToUpper()}|{fila.Rol.ToUpper()}|{fila.Transaccion?.ToUpper()}";
+
                 if (!existentes.TryGetValue(clave, out var reg))
                 {
                     reg = new MatrizPuestoSAP
@@ -617,11 +622,11 @@ public class CargarMatrizPuestosHandler : IRequestHandler<CargarMatrizPuestosCom
                         Puesto                   = fila.Puesto ?? string.Empty,
                         Email                    = fila.Email,
                         Rol                      = fila.Rol,
-                        InicioValidez            = fila.FechaDesde,
-                        FinValidez               = fila.FechaHasta,
-                        Transaccion              = fila.Transacciones,
+                        InicioValidez            = fila.InicioValidez,
+                        FinValidez               = fila.FinValidez,
+                        Transaccion              = fila.Transaccion,
                         UltimoIngreso            = fila.UltimoIngreso,
-                        FechaRevisionContraloria = new DateOnly(2025, 7, 31),
+                        FechaRevisionContraloria = fila.FechaRevisionContraloria,
                         CreatedBy                = _user.Email
                     };
                     await _repo.AddAsync(reg, ct);
@@ -629,10 +634,25 @@ public class CargarMatrizPuestosHandler : IRequestHandler<CargarMatrizPuestosCom
                 }
                 else
                 {
-                    reg.FechaRevisionContraloria = new DateOnly(2025, 7, 31);
-                    reg.UpdatedAt = DateTime.UtcNow;
-                    await _repo.UpdateAsync(reg, ct);
+                    reg.Puesto                   = fila.Puesto ?? reg.Puesto;
+                    reg.NombreCompleto           = fila.NombreCompleto ?? reg.NombreCompleto;
+                    reg.Departamento             = fila.Departamento ?? reg.Departamento;
+                    reg.InicioValidez            = fila.InicioValidez ?? reg.InicioValidez;
+                    reg.FinValidez               = fila.FinValidez ?? reg.FinValidez;
+                    reg.UltimoIngreso            = fila.UltimoIngreso ?? reg.UltimoIngreso;
+                    reg.FechaRevisionContraloria = fila.FechaRevisionContraloria ?? reg.FechaRevisionContraloria;
+                    reg.UpdatedAt                = DateTime.UtcNow;
                     resultado.Actualizados++;
+                }
+
+                pendientes++;
+                if (pendientes >= BATCH)
+                {
+                    try { await _repo.SaveChangesAsync(ct); pendientes = 0; }
+                    catch (Exception ex)
+                    {
+                        resultado.DetalleErrores.Add($"Error batch fila ~{idx}: {ex.InnerException?.Message ?? ex.Message}");
+                    }
                 }
             }
             catch (Exception ex)
@@ -642,19 +662,114 @@ public class CargarMatrizPuestosHandler : IRequestHandler<CargarMatrizPuestosCom
             }
         }
 
-        try { await _repo.SaveChangesAsync(ct); }
-        catch (Exception ex)
+        if (pendientes > 0)
         {
-            resultado.DetalleErrores.Insert(0, $"Error al guardar: {ex.InnerException?.Message ?? ex.Message}");
-            resultado.Errores += resultado.Insertados + resultado.Actualizados;
-            resultado.Insertados = resultado.Actualizados = 0;
-            return resultado;
+            try { await _repo.SaveChangesAsync(ct); }
+            catch (Exception ex)
+            {
+                resultado.DetalleErrores.Insert(0, $"Error al guardar: {ex.InnerException?.Message ?? ex.Message}");
+                resultado.Errores += resultado.Insertados + resultado.Actualizados;
+                resultado.Insertados = resultado.Actualizados = 0;
+                return resultado;
+            }
         }
 
         await _audit.LogAsync(_user.UserId, _user.Email, "CARGA_MATRIZ_PUESTOS", "MatrizPuestoSAP",
             null, datosDespues: new { resultado.Insertados, resultado.Actualizados }, ct: ct);
 
         return resultado;
+    }
+
+    // Parsea el Excel de SAP: una fila por USUARIO+ROL+TRANSACCION
+    // Columnas: ID | USUARIO | NOMBRE_COMPLETO | SOCIEDAD | DEPARTAMENTO | PUESTO |
+    //           EMAIL | ROL | INICIO_VALID | FIN_VALID | TRANSACCION | ULTIMO_INGRESO | FECHA_REVISION_CONTRALORIA
+    // Las fechas pueden venir como número YYYYMMDD (ej: 20250619) o como fecha Excel
+    private static List<FilaMatriz> ParseExcelMatriz(Stream stream)
+    {
+        using var wb = new XLWorkbook(stream);
+        var ws = wb.Worksheet(1);
+        var lastRow = ws.LastRowUsed()?.RowNumber() ?? 1;
+
+        // Detectar si la col 1 es ID/Cédula o directamente USUARIO
+        var header1 = ws.Cell(1, 1).GetString().Trim().ToUpperInvariant();
+        bool tieneCedula = header1 == "ID" || header1.Contains("CEDULA") || header1.Contains("CÉDULA");
+        int off = tieneCedula ? 1 : 0;
+
+        var resultado = new List<FilaMatriz>(lastRow);
+        for (int r = 2; r <= lastRow; r++)
+        {
+            var usuario = ws.Cell(r, 1 + off).GetString().Trim();
+            if (string.IsNullOrWhiteSpace(usuario)) continue;
+
+            resultado.Add(new FilaMatriz
+            {
+                Cedula                   = tieneCedula ? Ni(ws.Cell(r, 1).GetString()) : null,
+                UsuarioSAP               = usuario.ToUpper(),
+                NombreCompleto           = Ni(ws.Cell(r, 2 + off).GetString()),
+                Sociedad                 = Ni(ws.Cell(r, 3 + off).GetString()),
+                Departamento             = Ni(ws.Cell(r, 4 + off).GetString()),
+                Puesto                   = Ni(ws.Cell(r, 5 + off).GetString()),
+                Email                    = Ni(ws.Cell(r, 6 + off).GetString()),
+                Rol                      = ws.Cell(r, 7 + off).GetString().Trim().ToUpper(),
+                InicioValidez            = ParseFechaSAP(ws.Cell(r, 8 + off)),
+                FinValidez               = ParseFechaSAP(ws.Cell(r, 9 + off)),
+                Transaccion              = Ni(ws.Cell(r, 10 + off).GetString()),
+                UltimoIngreso            = ParseFechaSAP(ws.Cell(r, 11 + off)) is DateOnly d ? d.ToDateTime(TimeOnly.MinValue) : null,
+                FechaRevisionContraloria = ParseFechaSAP(ws.Cell(r, 12 + off)),
+            });
+        }
+        return resultado;
+    }
+
+    private static string? Ni(string s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    // Maneja fechas Excel, YYYYMMDD como número entero, y texto YYYYMMDD
+    private static DateOnly? ParseFechaSAP(IXLCell cell)
+    {
+        if (cell.IsEmpty()) return null;
+
+        // Fecha Excel real
+        if (cell.TryGetValue<DateTime>(out var dt)) return DateOnly.FromDateTime(dt);
+
+        // Número entero YYYYMMDD (ej: 20250619 o 99991231)
+        if (cell.TryGetValue<long>(out var num) && num >= 10000101 && num <= 99991231)
+        {
+            int y = (int)(num / 10000), m = (int)(num % 10000 / 100), d = (int)(num % 100);
+            if (m is >= 1 and <= 12 && d is >= 1 and <= 31)
+            {
+                // FIN_VALID=99991231 → sin vencimiento → null
+                if (y == 9999) return null;
+                try { return new DateOnly(y, m, d); } catch { }
+            }
+        }
+
+        // Texto YYYYMMDD
+        var txt = cell.GetString().Trim();
+        if (txt.Length == 8 && int.TryParse(txt, out var n))
+        {
+            int y = n / 10000, m = n % 10000 / 100, d2 = n % 100;
+            if (y == 9999) return null;
+            try { return new DateOnly(y, m, d2); } catch { }
+        }
+
+        return null;
+    }
+
+    private class FilaMatriz
+    {
+        public string? Cedula { get; set; }
+        public string UsuarioSAP { get; set; } = string.Empty;
+        public string? NombreCompleto { get; set; }
+        public string? Sociedad { get; set; }
+        public string? Departamento { get; set; }
+        public string? Puesto { get; set; }
+        public string? Email { get; set; }
+        public string Rol { get; set; } = string.Empty;
+        public DateOnly? InicioValidez { get; set; }
+        public DateOnly? FinValidez { get; set; }
+        public string? Transaccion { get; set; }
+        public DateTime? UltimoIngreso { get; set; }
+        public DateOnly? FechaRevisionContraloria { get; set; }
     }
 }
 
@@ -703,9 +818,11 @@ public class CargarCasosSESuiteHandler : IRequestHandler<CargarCasosSESuiteComma
             });
         }
 
+        const int BATCH = 500;
         var resultado = new CargaResultado { TotalRegistros = filas.Count };
         var existentes = (await _repo.GetAllAsync(ct)).ToDictionary(c => c.NumeroCaso.ToUpper());
 
+        int pendientes = 0;
         foreach (var (fila, idx) in filas.Select((f, i) => (f, i + 2)))
         {
             try
@@ -726,10 +843,22 @@ public class CargarCasosSESuiteHandler : IRequestHandler<CargarCasosSESuiteComma
                 }
                 else
                 {
-                    caso.EstadoCaso = fila.Estado; caso.FechaVencimiento = fila.FechaVencimiento;
-                    caso.Aprobador = fila.Aprobador; caso.UpdatedAt = DateTime.UtcNow;
-                    await _repo.UpdateAsync(caso, ct);
+                    // IMPORTANTE: no llamar UpdateAsync — solo modificar propiedades.
+                    caso.EstadoCaso      = fila.Estado;
+                    caso.FechaVencimiento = fila.FechaVencimiento;
+                    caso.Aprobador       = fila.Aprobador;
+                    caso.UpdatedAt       = DateTime.UtcNow;
                     resultado.Actualizados++;
+                }
+
+                pendientes++;
+                if (pendientes >= BATCH)
+                {
+                    try { await _repo.SaveChangesAsync(ct); pendientes = 0; }
+                    catch (Exception ex)
+                    {
+                        resultado.DetalleErrores.Add($"Error batch fila ~{idx}: {ex.InnerException?.Message ?? ex.Message}");
+                    }
                 }
             }
             catch (Exception ex)
@@ -739,13 +868,16 @@ public class CargarCasosSESuiteHandler : IRequestHandler<CargarCasosSESuiteComma
             }
         }
 
-        try { await _repo.SaveChangesAsync(ct); }
-        catch (Exception ex)
+        if (pendientes > 0)
         {
-            resultado.DetalleErrores.Insert(0, $"Error al guardar: {ex.InnerException?.Message ?? ex.Message}");
-            resultado.Errores += resultado.Insertados + resultado.Actualizados;
-            resultado.Insertados = resultado.Actualizados = 0;
-            return resultado;
+            try { await _repo.SaveChangesAsync(ct); }
+            catch (Exception ex)
+            {
+                resultado.DetalleErrores.Insert(0, $"Error al guardar: {ex.InnerException?.Message ?? ex.Message}");
+                resultado.Errores += resultado.Insertados + resultado.Actualizados;
+                resultado.Insertados = resultado.Actualizados = 0;
+                return resultado;
+            }
         }
 
         await _audit.LogAsync(_user.UserId, _user.Email, "CARGA_CASOS_SESUITE", "CasoSESuite",
