@@ -81,9 +81,11 @@ public class CargarEmpleadosHandler : IRequestHandler<CargarEmpleadosCommand, Ca
 
                 if (existentes.TryGetValue(fila.NumeroEmpleado, out var emp))
                 {
-                    emp.NombreCompleto = fila.NombreCompleto;
+                    emp.NombreCompleto    = fila.NombreCompleto;
                     emp.CorreoCorporativo = fila.Email;
-                    emp.EstadoLaboral = fila.Activo ? EstadoLaboral.ACTIVO : EstadoLaboral.BAJA_PROCESADA;
+                    emp.EstadoLaboral     = fila.Activo ? EstadoLaboral.ACTIVO : EstadoLaboral.BAJA_PROCESADA;
+                    // Actualizar cédula solo si viene en el archivo (no borrar si ya existía)
+                    if (!string.IsNullOrWhiteSpace(fila.Cedula)) emp.Cedula = fila.Cedula;
                     emp.UpdatedAt = DateTime.UtcNow;
                     await _repo.UpdateAsync(emp, ct);
                     resultado.Actualizados++;
@@ -92,13 +94,14 @@ public class CargarEmpleadosHandler : IRequestHandler<CargarEmpleadosCommand, Ca
                 {
                     var nuevo = new EmpleadoMaestro
                     {
-                        NumeroEmpleado = fila.NumeroEmpleado,
-                        NombreCompleto = fila.NombreCompleto,
+                        NumeroEmpleado    = fila.NumeroEmpleado,
+                        Cedula            = fila.Cedula,
+                        NombreCompleto    = fila.NombreCompleto,
                         CorreoCorporativo = fila.Email,
-                        SociedadId = request.SociedadId > 0 ? request.SociedadId : null,
-                        EstadoLaboral = fila.Activo ? EstadoLaboral.ACTIVO : EstadoLaboral.BAJA_PROCESADA,
-                        FechaIngreso = fila.FechaIngreso.HasValue ? DateOnly.FromDateTime(fila.FechaIngreso.Value) : DateOnly.FromDateTime(DateTime.UtcNow),
-                        CreatedBy = _user.Email
+                        SociedadId        = request.SociedadId > 0 ? request.SociedadId : null,
+                        EstadoLaboral     = fila.Activo ? EstadoLaboral.ACTIVO : EstadoLaboral.BAJA_PROCESADA,
+                        FechaIngreso      = fila.FechaIngreso.HasValue ? DateOnly.FromDateTime(fila.FechaIngreso.Value) : DateOnly.FromDateTime(DateTime.UtcNow),
+                        CreatedBy         = _user.Email
                     };
                     await _repo.AddAsync(nuevo, ct);
                     resultado.Insertados++;
@@ -140,33 +143,43 @@ public class CargarEmpleadosHandler : IRequestHandler<CargarEmpleadosCommand, Ca
     private static List<FilaEmpleado> ParseExcel(Stream stream)
     {
         // Columnas de la plantilla (ver CargasController.PlantillaEmpleados):
-        // 1=NumeroEmpleado, 2=Nombre, 3=ApellidoPaterno, 4=ApellidoMaterno,
-        // 5=CorreoCorporativo, 6=FechaIngreso, 7=EstadoLaboral, 8=DepartamentoCodigo, 9=PuestoCodigo
+        // 1=NumeroEmpleado, 2=Cedula*, 3=Nombre, 4=ApellidoPaterno, 5=ApellidoMaterno,
+        // 6=CorreoCorporativo, 7=FechaIngreso, 8=EstadoLaboral, 9=DepartamentoCodigo, 10=PuestoCodigo
+        // *Cedula es la clave maestra de cruce SAP ↔ Nómina ↔ Entra ID
+        //
+        // Compatibilidad: si el encabezado de la col 2 NO es "Cedula", asumimos formato
+        // antiguo (sin Cedula) y desplazamos columnas -1 para mantener retrocompatibilidad.
         var filas = new List<FilaEmpleado>();
         using var wb = new XLWorkbook(stream);
         var ws = wb.Worksheet(1);
         var lastRow = ws.LastRowUsed()?.RowNumber() ?? 1;
 
+        var header2 = ws.Cell(1, 2).GetString().Trim().ToUpperInvariant();
+        bool tieneCedula = header2 == "CEDULA" || header2 == "CÉDULA";
+        int off = tieneCedula ? 1 : 0; // offset para columnas a partir de Nombre
+
         for (int r = 2; r <= lastRow; r++)
         {
             var numero = ws.Cell(r, 1).GetString().Trim();
-            // Saltar filas vacías o de notas (ej: "* EstadoLaboral: ...")
+            // Saltar filas vacías o de notas (ej: "* Cedula = ...")
             if (string.IsNullOrWhiteSpace(numero) || numero.StartsWith('*')) continue;
 
-            var nombre = ws.Cell(r, 2).GetString().Trim();
-            var apellidoP = ws.Cell(r, 3).GetString().Trim();
-            var apellidoM = ws.Cell(r, 4).GetString().Trim();
+            var cedula  = tieneCedula ? ws.Cell(r, 2).GetString().Trim() : string.Empty;
+            var nombre   = ws.Cell(r, 2 + off).GetString().Trim();
+            var apellidoP = ws.Cell(r, 3 + off).GetString().Trim();
+            var apellidoM = ws.Cell(r, 4 + off).GetString().Trim();
             var nombreCompleto = string.Join(" ", new[] { nombre, apellidoP, apellidoM }
                 .Where(s => !string.IsNullOrWhiteSpace(s)));
 
             filas.Add(new FilaEmpleado
             {
                 NumeroEmpleado = numero,
+                Cedula         = string.IsNullOrWhiteSpace(cedula) ? null : cedula,
                 NombreCompleto = nombreCompleto,
-                Email = ws.Cell(r, 5).GetString().Trim(),
-                Activo = ws.Cell(r, 7).GetString().Trim().Equals("ACTIVO", StringComparison.OrdinalIgnoreCase),
-                FechaIngreso = ws.Cell(r, 6).TryGetValue<DateTime>(out var d) ? d : null,
-                Puesto = ws.Cell(r, 9).GetString().Trim()
+                Email          = ws.Cell(r, 5 + off).GetString().Trim(),
+                FechaIngreso   = ws.Cell(r, 6 + off).TryGetValue<DateTime>(out var d) ? d : null,
+                Activo         = ws.Cell(r, 7 + off).GetString().Trim().Equals("ACTIVO", StringComparison.OrdinalIgnoreCase),
+                Puesto         = ws.Cell(r, 9 + off).GetString().Trim()
             });
         }
         return filas;
@@ -183,6 +196,8 @@ public class CargarEmpleadosHandler : IRequestHandler<CargarEmpleadosCommand, Ca
     private class FilaEmpleado
     {
         public string NumeroEmpleado { get; set; } = string.Empty;
+        /// <summary>Cédula de identidad — clave maestra de cruce SAP ↔ Nómina ↔ Entra ID</summary>
+        public string? Cedula { get; set; }
         public string NombreCompleto { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
         public string Puesto { get; set; } = string.Empty;

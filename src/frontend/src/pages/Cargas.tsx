@@ -26,10 +26,11 @@ const TIPO_CONFIG: Record<TipoCarga, {
 }> = {
   empleados: {
     label: 'Empleados Maestro',
-    descripcion: 'Importa o actualiza el padrón de empleados desde nómina (SE Suite / Evolution HR).',
+    descripcion: 'Importa o actualiza el padrón de empleados desde nómina (Evolution HR). La Cédula es la clave de cruce SAP ↔ Nómina ↔ Entra ID.',
     icon: <Users size={20} className="text-blue-600" />,
-    columnas: ['NumeroEmpleado*', 'Nombre*', 'ApellidoPaterno*', 'ApellidoMaterno', 'CorreoCorporativo',
-               'FechaIngreso (YYYY-MM-DD)', 'EstadoLaboral (ACTIVO/INACTIVO/BAJA_PROCESADA)',
+    columnas: ['NumeroEmpleado*', 'Cedula* (clave cruce)', 'Nombre*', 'ApellidoPaterno*', 'ApellidoMaterno',
+               'CorreoCorporativo', 'FechaIngreso (YYYY-MM-DD)',
+               'EstadoLaboral (ACTIVO/INACTIVO/BAJA_PROCESADA)',
                'DepartamentoCodigo', 'PuestoCodigo'],
   },
   sapRoles: {

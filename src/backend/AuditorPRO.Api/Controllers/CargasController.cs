@@ -53,8 +53,10 @@ public class CargasController : ControllerBase
         var ws = wb.Worksheets.Add("Empleados");
 
         // Encabezados
+        // Col 1=NumeroEmpleado, 2=Cedula, 3=Nombre, 4=ApellidoPaterno, 5=ApellidoMaterno,
+        // 6=CorreoCorporativo, 7=FechaIngreso, 8=EstadoLaboral, 9=DepartamentoCodigo, 10=PuestoCodigo
         string[] headers = [
-            "NumeroEmpleado", "Nombre", "ApellidoPaterno", "ApellidoMaterno",
+            "NumeroEmpleado", "Cedula", "Nombre", "ApellidoPaterno", "ApellidoMaterno",
             "CorreoCorporativo", "FechaIngreso", "EstadoLaboral",
             "DepartamentoCodigo", "PuestoCodigo"
         ];
@@ -66,20 +68,23 @@ public class CargasController : ControllerBase
             cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#1e40af");
             cell.Style.Font.FontColor = XLColor.White;
         }
+        // Resaltar columna Cedula en amarillo — es la clave maestra de cruce
+        ws.Cell(1, 2).Style.Fill.BackgroundColor = XLColor.FromHtml("#b45309");
 
         // Fila de ejemplo
         ws.Cell(2, 1).Value = "EMP-001";
-        ws.Cell(2, 2).Value = "Juan";
-        ws.Cell(2, 3).Value = "Serrano";
-        ws.Cell(2, 4).Value = "García";
-        ws.Cell(2, 5).Value = "juan.serrano@ilglogistics.com";
-        ws.Cell(2, 6).Value = "2024-01-15";
-        ws.Cell(2, 7).Value = "ACTIVO";
-        ws.Cell(2, 8).Value = "TI";
-        ws.Cell(2, 9).Value = "ANALYST";
+        ws.Cell(2, 2).Value = "112340567";          // Cedula — clave maestra
+        ws.Cell(2, 3).Value = "Juan";
+        ws.Cell(2, 4).Value = "Serrano";
+        ws.Cell(2, 5).Value = "García";
+        ws.Cell(2, 6).Value = "juan.serrano@ilglogistics.com";
+        ws.Cell(2, 7).Value = "2024-01-15";
+        ws.Cell(2, 8).Value = "ACTIVO";
+        ws.Cell(2, 9).Value = "TI";
+        ws.Cell(2, 10).Value = "ANALYST";
 
         // Nota en fila 3
-        ws.Cell(3, 1).Value = "* EstadoLaboral: ACTIVO | INACTIVO | BAJA_PROCESADA";
+        ws.Cell(3, 1).Value = "* Cedula = clave de cruce SAP ↔ Nómina ↔ Entra ID (OBLIGATORIA para Control Cruzado). EstadoLaboral: ACTIVO | INACTIVO | BAJA_PROCESADA";
         ws.Cell(3, 1).Style.Font.Italic = true;
         ws.Cell(3, 1).Style.Font.FontColor = XLColor.Gray;
         ws.Range(3, 1, 3, headers.Length).Merge();
