@@ -4,6 +4,7 @@ import {
   LayoutDashboard, PlayCircle, AlertTriangle, FileCheck,
   Brain, Plug, FileText, BookOpen, LogOut, ClipboardList, Upload, Database, Building2
 } from 'lucide-react';
+import logoIlg from '../../assets/logo-ilg.png';
 
 const DEV_MODE = !import.meta.env.VITE_AZURE_CLIENT_ID;
 
@@ -55,15 +56,11 @@ export function AppLayout() {
     <div className="flex h-screen bg-gray-100">
       {/* Sidebar */}
       <aside className="w-56 bg-gray-900 text-white flex flex-col shadow-xl">
-        <div className="px-4 py-5 border-b border-gray-700">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-red-600 rounded-lg flex items-center justify-center shrink-0">
-              <span className="text-white font-black text-sm">A</span>
-            </div>
-            <div>
-              <h1 className="text-sm font-bold text-white leading-tight">AuditorPRO TI</h1>
-              <p className="text-[10px] text-gray-400 leading-tight">Auditoría Preventiva</p>
-            </div>
+        <div className="px-4 py-4 border-b border-gray-700 flex flex-col items-center gap-2">
+          <img src={logoIlg} alt="ILG Logistics" className="h-9 object-contain" />
+          <div className="text-center">
+            <h1 className="text-sm font-bold text-white leading-tight">AuditorPRO TI</h1>
+            <p className="text-[10px] text-gray-400 leading-tight">Auditoría Preventiva</p>
           </div>
         </div>
 
