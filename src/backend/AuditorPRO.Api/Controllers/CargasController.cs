@@ -518,4 +518,33 @@ public class CargasController : ControllerBase
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             resultado.NombreArchivo);
     }
+
+    // ─── Sincronización directa Entra ID via Microsoft Graph ─────────────────
+
+    /// <summary>
+    /// Sincroniza el directorio Entra ID directamente desde Microsoft Graph.
+    /// Requiere que el backend tenga permisos User.Read.All (y AuditLog.Read.All para signInActivity).
+    /// Fallback: usar POST /api/cargas/snapshot-entraid con archivo Excel.
+    /// </summary>
+    [HttpPost("snapshot-entraid/sync")]
+    public async Task<IActionResult> SyncEntraIDDirecto(
+        [FromBody] SyncEntraIDRequest? request,
+        CancellationToken ct)
+    {
+        var cmd = new SyncEntraIDDirectoCommand(request?.NombreInstantanea);
+        var resultado = await _mediator.Send(cmd, ct);
+
+        if (resultado.SnapshotId == Guid.Empty)
+        {
+            return StatusCode(502, new
+            {
+                mensaje = "No se pudo sincronizar con Microsoft Graph.",
+                errores = resultado.DetalleErrores
+            });
+        }
+
+        return Ok(resultado);
+    }
 }
+
+public record SyncEntraIDRequest(string? NombreInstantanea);

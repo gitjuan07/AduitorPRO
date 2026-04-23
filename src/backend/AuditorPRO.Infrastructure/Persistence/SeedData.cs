@@ -359,6 +359,158 @@ public static class SeedData
 
         db.PuntosControl.AddRange(controles);
         await db.SaveChangesAsync();
+
+        await SeedControlsCruzadosAsync(db);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // CONTROLES CRUZADOS CC-001 a CC-012 — se ejecutan con upsert por código
+    // Se pueden agregar aunque ya existan los dominios (guard propio).
+    // ─────────────────────────────────────────────────────────────────────────
+    private static async Task SeedControlsCruzadosAsync(AppDbContext db)
+    {
+        var codigosExistentes = await db.PuntosControl
+            .Where(p => p.Codigo.StartsWith("CC-"))
+            .Select(p => p.Codigo)
+            .ToHashSetAsync();
+
+        if (codigosExistentes.Count >= 12) return;
+
+        var dominioId = 1; // Accesos e Identidad
+
+        var nuevos = new List<PuntoControl>
+        {
+            new() {
+                DominioId = dominioId, Codigo = "CC-001",
+                Nombre = "Usuario SAP activo sin empleado maestro asociado (por cédula)",
+                Descripcion = "Cruza usuarios SAP activos contra la nómina usando la cédula normalizada. Detecta usuarios SAP que no corresponden a ningún empleado activo.",
+                TipoEvaluacion = TipoEvaluacion.AUTOMATICO, CriticidadBase = Criticidad.CRITICA,
+                NormaReferencia = "ISO 27001 A.9.2.1 / COBIT DSS06.03",
+                CondicionVerde = "0 usuarios SAP activos sin empleado maestro",
+                CondicionAmarillo = "1–5 usuarios SAP sin correspondencia en nómina",
+                CondicionRojo = "Más de 5 usuarios SAP sin empleado maestro asociado"
+            },
+            new() {
+                DominioId = dominioId, Codigo = "CC-002",
+                Nombre = "Empleado inactivo o baja procesada con usuario SAP activo",
+                Descripcion = "Detecta empleados con estado INACTIVO o BAJA_PROCESADA que aún tienen cuenta SAP activa. Cruce por cédula normalizada.",
+                TipoEvaluacion = TipoEvaluacion.AUTOMATICO, CriticidadBase = Criticidad.CRITICA,
+                NormaReferencia = "ISO 27001 A.9.2.6 / NIST PR.AC-1",
+                CondicionVerde = "0 empleados de baja con acceso SAP activo",
+                CondicionAmarillo = "1–2 casos bajo revisión",
+                CondicionRojo = "3+ empleados de baja con acceso SAP activo"
+            },
+            new() {
+                DominioId = dominioId, Codigo = "CC-003",
+                Nombre = "Usuario SAP activo sin ingreso en los últimos 90 días",
+                Descripcion = "Identifica cuentas SAP activas que no han sido usadas en 90 días o más según la fecha de último ingreso registrada.",
+                TipoEvaluacion = TipoEvaluacion.AUTOMATICO, CriticidadBase = Criticidad.MEDIA,
+                NormaReferencia = "ISO 27001 A.9.2.1 / CIS Controls v8 #5",
+                CondicionVerde = "0 cuentas SAP inactivas ≥ 90 días",
+                CondicionAmarillo = "1–10 cuentas SAP sin acceso reciente",
+                CondicionRojo = "Más de 10 cuentas SAP sin acceso en 90+ días"
+            },
+            new() {
+                DominioId = dominioId, Codigo = "CC-004",
+                Nombre = "Usuario Entra ID activo sin EmployeeId",
+                Descripcion = "Detecta cuentas habilitadas en Entra ID que no tienen el campo EmployeeId (cédula) configurado. Sin este campo no se puede vincular con SAP o nómina.",
+                TipoEvaluacion = TipoEvaluacion.AUTOMATICO, CriticidadBase = Criticidad.CRITICA,
+                NormaReferencia = "ISO 27001 A.9.2.1 / NIST PR.AC-6",
+                CondicionVerde = "0 cuentas Entra ID sin EmployeeId",
+                CondicionAmarillo = "1–3 cuentas sin EmployeeId",
+                CondicionRojo = "4+ cuentas activas sin EmployeeId"
+            },
+            new() {
+                DominioId = dominioId, Codigo = "CC-005",
+                Nombre = "EmployeeId duplicado en Entra ID",
+                Descripcion = "Detecta EmployeeId repetidos en el directorio Entra ID. Indica posible error de datos o suplantación de identidad.",
+                TipoEvaluacion = TipoEvaluacion.AUTOMATICO, CriticidadBase = Criticidad.CRITICA,
+                NormaReferencia = "ISO 27001 A.9.2.1 / NIST PR.AC-6",
+                CondicionVerde = "0 EmployeeId duplicados en Entra ID",
+                CondicionAmarillo = "No aplica — cualquier duplicado es crítico",
+                CondicionRojo = "≥ 1 EmployeeId duplicado detectado"
+            },
+            new() {
+                DominioId = dominioId, Codigo = "CC-006",
+                Nombre = "Inconsistencia entre cédula SAP y EmployeeId de Entra ID",
+                Descripcion = "Cruza por email corporativo y compara la cédula en SAP contra el EmployeeId en Entra ID. Una discrepancia indica posible error de identidad.",
+                TipoEvaluacion = TipoEvaluacion.AUTOMATICO, CriticidadBase = Criticidad.CRITICA,
+                NormaReferencia = "ISO 27001 A.9.2.1 / COBIT DSS06.03",
+                CondicionVerde = "0 inconsistencias de identidad entre SAP y Entra ID",
+                CondicionAmarillo = "No aplica — cualquier inconsistencia es crítica",
+                CondicionRojo = "≥ 1 usuario con cédula SAP distinta al EmployeeId Entra ID"
+            },
+            new() {
+                DominioId = dominioId, Codigo = "CC-007",
+                Nombre = "Usuario SAP con sociedad no autorizada por la Matriz de Puestos",
+                Descripcion = "Verifica que la combinación Puesto/Sociedad de cada usuario SAP exista en la Matriz de Puestos aprobada por Contraloría.",
+                TipoEvaluacion = TipoEvaluacion.AUTOMATICO, CriticidadBase = Criticidad.CRITICA,
+                NormaReferencia = "COBIT DSS06.03 / ISO 27001 A.9.2.2",
+                CondicionVerde = "Todos los usuarios SAP tienen Puesto/Sociedad en la Matriz",
+                CondicionAmarillo = "1–5 combinaciones no documentadas en Matriz",
+                CondicionRojo = "6+ combinaciones no autorizadas"
+            },
+            new() {
+                DominioId = dominioId, Codigo = "CC-008",
+                Nombre = "Rol SAP no permitido por la Matriz de Puestos",
+                Descripcion = "Detecta asignaciones de roles SAP que no están autorizadas en la Matriz de Puestos para el puesto y sociedad del usuario. Considera excepciones SE Suite vigentes.",
+                TipoEvaluacion = TipoEvaluacion.AUTOMATICO, CriticidadBase = Criticidad.CRITICA,
+                NormaReferencia = "COBIT DSS06.03 / SOX Section 404",
+                CondicionVerde = "Todos los roles están en la Matriz o con excepción SE Suite vigente",
+                CondicionAmarillo = "1–3 roles fuera de Matriz sin excepción",
+                CondicionRojo = "4+ roles no autorizados sin justificación"
+            },
+            new() {
+                DominioId = dominioId, Codigo = "CC-009",
+                Nombre = "Transacción SAP no permitida por la Matriz para el puesto/rol/sociedad",
+                Descripcion = "Verifica que las transacciones de cada rol SAP asignado estén autorizadas en la Matriz de Puestos. Excluye casos SE Suite vigentes.",
+                TipoEvaluacion = TipoEvaluacion.AUTOMATICO, CriticidadBase = Criticidad.CRITICA,
+                NormaReferencia = "COBIT DSS06.03 / SOX Section 404",
+                CondicionVerde = "Todas las transacciones autorizadas en Matriz o con excepción",
+                CondicionAmarillo = "1–5 transacciones fuera de Matriz",
+                CondicionRojo = "6+ transacciones no autorizadas"
+            },
+            new() {
+                DominioId = dominioId, Codigo = "CC-010",
+                Nombre = "Fecha de revisión de Contraloría vencida en Matriz de Puestos",
+                Descripcion = "Detecta puestos cuya última revisión por Contraloría ya expiró según FechaRevisionContraloria en la Matriz de Puestos.",
+                TipoEvaluacion = TipoEvaluacion.AUTOMATICO, CriticidadBase = Criticidad.MEDIA,
+                NormaReferencia = "COBIT APO01.02 / ISO 27001 A.9.2.2",
+                CondicionVerde = "Todos los puestos con revisión Contraloría vigente",
+                CondicionAmarillo = "1–3 puestos con revisión vencida",
+                CondicionRojo = "4+ puestos con Matriz sin actualizar por Contraloría"
+            },
+            new() {
+                DominioId = dominioId, Codigo = "CC-011",
+                Nombre = "Rol crítico SAP sin expediente o justificación",
+                Descripcion = "Verifica que toda asignación de un rol marcado como crítico tenga expediente adjunto o caso SE Suite que la justifique.",
+                TipoEvaluacion = TipoEvaluacion.AUTOMATICO, CriticidadBase = Criticidad.CRITICA,
+                NormaReferencia = "COBIT DSS06.03 / SOX Section 302",
+                CondicionVerde = "Todos los roles críticos con expediente o SE Suite vigente",
+                CondicionAmarillo = "No aplica — cualquier caso sin justificación es crítico",
+                CondicionRojo = "≥ 1 asignación de rol crítico sin respaldo documental"
+            },
+            new() {
+                DominioId = dominioId, Codigo = "CC-012",
+                Nombre = "Posible conflicto de Segregación de Funciones (SoD)",
+                Descripcion = "Detecta usuarios que tienen asignados simultáneamente roles incompatibles según la Matriz SoD. Considera severidad de los conflictos definidos.",
+                TipoEvaluacion = TipoEvaluacion.AUTOMATICO, CriticidadBase = Criticidad.CRITICA,
+                NormaReferencia = "COBIT APO01.02 / SOX Section 404 / ISO 27001 A.6.1.2",
+                CondicionVerde = "0 usuarios con conflicto SoD activo",
+                CondicionAmarillo = "1–2 usuarios con conflicto SoD documentado y mitigado",
+                CondicionRojo = "3+ usuarios con conflicto SoD no resuelto"
+            },
+        };
+
+        // Upsert por código — nunca duplicar
+        foreach (var c in nuevos)
+        {
+            if (!codigosExistentes.Contains(c.Codigo))
+                db.PuntosControl.Add(c);
+        }
+
+        if (nuevos.Any(c => !codigosExistentes.Contains(c.Codigo)))
+            await db.SaveChangesAsync();
     }
 
     // ─────────────────────────────────────────────────────────────────────────

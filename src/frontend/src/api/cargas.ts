@@ -130,6 +130,10 @@ export const cargasApi = {
   getSnapshotsEntraID: (): Promise<SnapshotEntraIDDto[]> =>
     api.get('/cargas/snapshots-entraid').then(r => r.data),
 
+  syncEntraIDDirecto: (nombreInstantanea?: string): Promise<SnapshotEntraIDResultado> =>
+    api.post('/cargas/snapshot-entraid/sync', { nombreInstantanea: nombreInstantanea ?? null })
+      .then(r => r.data),
+
   descargarSnapshotEntraID: async (id: string, nombre: string) => {
     const res = await api.get(`/cargas/snapshot-entraid/${id}/excel`, { responseType: 'blob' });
     const url = URL.createObjectURL(res.data);
@@ -196,6 +200,7 @@ export interface SnapshotEntraIDResultado {
   totalRegistros: number;
   errores: number;
   detalleErrores: string[];
+  origen?: string;
 }
 
 export interface SnapshotEntraIDDto {
@@ -204,4 +209,5 @@ export interface SnapshotEntraIDDto {
   fechaInstantanea: string;
   totalRegistros: number;
   creadoPor?: string;
+  origen?: string;
 }

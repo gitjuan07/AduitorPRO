@@ -41,6 +41,7 @@ public static class DependencyInjection
         services.AddScoped<IMotorReglasService, MotorReglasService>();
         services.AddScoped<IIngestorDocumentosService, IngestorDocumentosService>();
         services.AddScoped<IBaseConocimientoRepository, BaseConocimientoRepository>();
+        services.AddScoped<IEntraIdSyncService, EntraIdSyncService>();
 
         return services;
     }

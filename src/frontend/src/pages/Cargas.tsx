@@ -6,7 +6,7 @@ import {
   Upload, Download, FileSpreadsheet, Users, ShieldCheck,
   CheckCircle2, XCircle, AlertTriangle, RefreshCw, X, LayoutGrid, Briefcase,
   MonitorSmartphone, Calendar, Hash, DatabaseZap, Search, ChevronLeft, ChevronRight, Eye,
-  Building2, History, BadgeCheck, Clock
+  Building2, History, BadgeCheck, Clock, Zap
 } from 'lucide-react';
 
 type TipoCarga = 'empleados' | 'sapRoles' | 'matrizPuestos' | 'casosSeSuite' | 'entraID';
@@ -489,7 +489,8 @@ export function Cargas() {
   const [snapshots, setSnapshots] = useState<SnapshotEntraIDDto[]>([]);
   const [loadingSnapshots, setLoadingSnapshots] = useState(false);
   const [descargandoId, setDescargandoId] = useState<string | null>(null);
-  const [ultimoSnapshot, setUltimoSnapshot] = useState<{ id: string; nombre: string } | null>(null);
+  const [ultimoSnapshot, setUltimoSnapshot] = useState<{ id: string; nombre: string; origen?: string } | null>(null);
+  const [syncLoading, setSyncLoading] = useState(false);
   const [recargarVisor, setRecargarVisor] = useState(0);
   const [recargarLotes, setRecargarLotes] = useState(0);
   const [sociedadCodigo, setSociedadCodigo] = useState('');
@@ -515,6 +516,36 @@ export function Cargas() {
         .finally(() => setLoadingSnapshots(false));
     }
   }, [tipo]);
+
+  const handleSyncDirecto = async () => {
+    setSyncLoading(true);
+    setState(s => ({ ...s, resultado: null }));
+    setUltimoSnapshot(null);
+    try {
+      const res = await cargasApi.syncEntraIDDirecto(nombreSnapshot || undefined);
+      const resultado: CargaResultado = {
+        totalRegistros: res.totalRegistros,
+        insertados: res.totalRegistros - res.errores,
+        actualizados: 0,
+        errores: res.errores,
+        detalleErrores: res.detalleErrores,
+      };
+      setState(s => ({ ...s, resultado }));
+      setUltimoSnapshot({ id: res.snapshotId, nombre: res.nombre, origen: res.origen });
+      if (res.errores === 0)
+        toast.success(`Snapshot "${res.nombre}" sincronizado: ${res.totalRegistros} usuarios`);
+      else
+        toast.warning(`Sync completado con ${res.errores} error(es)`);
+      cargasApi.getSnapshotsEntraID().then(setSnapshots).catch(() => {});
+      setNombreSnapshot('');
+      setRecargarLotes(v => v + 1);
+    } catch (err: unknown) {
+      const apiMsg = (err as { response?: { data?: { errors?: string[] } } })?.response?.data?.errors?.[0];
+      toast.error(apiMsg ?? 'Error al sincronizar con Microsoft Graph. Verifica la Managed Identity.');
+    } finally {
+      setSyncLoading(false);
+    }
+  };
 
   const handleCarga = async () => {
     const archivo = state.file;
@@ -666,13 +697,16 @@ export function Cargas() {
         </div>
       )}
 
-      {/* Configuración del snapshot (sólo Entra ID) */}
+      {/* Entra ID: sincronización directa via Graph (opción primaria) */}
       {tipo === 'entraID' && (
         <div className="mb-4 bg-sky-50 border border-sky-200 rounded-xl p-4 space-y-3">
           <div className="flex items-center gap-2 text-sky-700 font-semibold text-sm">
-            <DatabaseZap size={16} />
-            Configurar snapshot
+            <Zap size={16} />
+            Sincronización directa — Microsoft Graph
           </div>
+          <p className="text-xs text-gray-500 leading-relaxed">
+            Conecta directo al tenant Azure AD vía Managed Identity. No requiere exportar Excel.
+          </p>
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">
               Nombre del snapshot <span className="text-gray-400 font-normal">(opcional)</span>
@@ -685,17 +719,27 @@ export function Cargas() {
               className="w-full border border-sky-300 bg-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 placeholder:text-gray-400"
             />
           </div>
-          <div className="flex items-center gap-2 text-xs text-gray-500">
-            <Calendar size={12} className="text-sky-500 flex-shrink-0" />
-            Fecha del snapshot:
-            <span className="font-semibold text-gray-700 tabular-nums">
-              {new Date().toLocaleString('es-CR', {
-                day: '2-digit', month: 'short', year: 'numeric',
-                hour: '2-digit', minute: '2-digit', second: '2-digit',
-              })}
-            </span>
-            <span className="text-gray-400">(se grabará al momento de insertar)</span>
+          <button
+            onClick={handleSyncDirecto}
+            disabled={syncLoading || state.loading}
+            className="w-full flex items-center justify-center gap-2 bg-sky-600 text-white px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-sky-700 disabled:opacity-50 transition"
+          >
+            {syncLoading
+              ? <><RefreshCw size={15} className="animate-spin" /> Sincronizando con Azure AD...</>
+              : <><Zap size={15} /> Sincronizar Entra ID</>}
+          </button>
+          <div className="flex items-center gap-1.5 text-[11px] text-sky-600">
+            <CheckCircle2 size={11} />Requiere permiso <span className="font-mono bg-sky-100 px-1 rounded">User.Read.All</span> en la Managed Identity
           </div>
+        </div>
+      )}
+
+      {/* Entra ID: divisor antes del fallback Excel */}
+      {tipo === 'entraID' && (
+        <div className="relative flex items-center mb-4">
+          <div className="flex-grow border-t border-gray-200" />
+          <span className="mx-3 text-xs text-gray-400 whitespace-nowrap">o importa desde Excel</span>
+          <div className="flex-grow border-t border-gray-200" />
         </div>
       )}
 
@@ -711,10 +755,10 @@ export function Cargas() {
       {state.file && (
         <div className="mt-4 flex items-center gap-3">
           {tipo === 'entraID' ? (
-            <button onClick={handleCarga} disabled={state.loading}
-              className="flex items-center gap-2 bg-sky-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-sky-700 disabled:opacity-50 transition">
+            <button onClick={handleCarga} disabled={state.loading || syncLoading}
+              className="flex items-center gap-2 bg-slate-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-slate-700 disabled:opacity-50 transition">
               {state.loading ? <RefreshCw size={15} className="animate-spin" /> : <DatabaseZap size={15} />}
-              {state.loading ? 'Insertando...' : 'Insertar en Base de Datos'}
+              {state.loading ? 'Importando...' : 'Importar desde Excel'}
             </button>
           ) : (
             <button onClick={handleCarga} disabled={state.loading}
@@ -738,7 +782,10 @@ export function Cargas() {
             <div className="flex items-center gap-3 bg-sky-50 border border-sky-200 rounded-xl px-4 py-3">
               <CheckCircle2 size={16} className="text-sky-600 flex-shrink-0" />
               <div className="flex-1 text-sm text-sky-800">
-                <span className="font-semibold">"{ultimoSnapshot.nombre}"</span> insertado correctamente en la base de datos.
+                <span className="font-semibold">"{ultimoSnapshot.nombre}"</span> guardado correctamente.{' '}
+                {ultimoSnapshot.origen === 'GRAPH_DIRECT'
+                  ? <span className="inline-flex items-center gap-1 text-xs bg-sky-200 text-sky-800 px-1.5 py-0.5 rounded font-mono"><Zap size={10} />GRAPH_DIRECT</span>
+                  : <span className="inline-flex items-center gap-1 text-xs bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-mono"><DatabaseZap size={10} />MANUAL_EXCEL</span>}
               </div>
               <button
                 onClick={() => descargarSnapshot({ id: ultimoSnapshot.id, nombre: ultimoSnapshot.nombre, fechaInstantanea: new Date().toISOString(), totalRegistros: state.resultado!.totalRegistros })}
@@ -807,6 +854,7 @@ export function Cargas() {
                       <span className="flex items-center justify-end gap-1"><Hash size={11} /> Usuarios</span>
                     </th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-600">Creado por</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-600">Origen</th>
                     <th className="px-4 py-2.5"></th>
                   </tr>
                 </thead>
@@ -826,6 +874,11 @@ export function Cargas() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-gray-500 text-xs">{snap.creadoPor ?? '—'}</td>
+                      <td className="px-4 py-3">
+                        {snap.origen === 'GRAPH_DIRECT'
+                          ? <span className="inline-flex items-center gap-1 text-[11px] bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded font-mono"><Zap size={9} />Graph</span>
+                          : <span className="inline-flex items-center gap-1 text-[11px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-mono"><DatabaseZap size={9} />Excel</span>}
+                      </td>
                       <td className="px-4 py-3 text-right">
                         <button
                           onClick={() => descargarSnapshot(snap)}

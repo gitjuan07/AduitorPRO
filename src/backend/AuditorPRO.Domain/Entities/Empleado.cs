@@ -25,6 +25,8 @@ public class EmpleadoMaestro : BaseEntity
     public DateOnly? FechaBaja { get; set; }
     public string? FuenteOrigen { get; set; }
     public Guid? LoteCargaId { get; set; }
+    /// <summary>Cédula normalizada (sin guiones, trim, uppercase) — clave de cruce en controles</summary>
+    public string? CedulaNormalizada { get; set; }
 }
 
 public class UsuarioSistema : BaseEntity
@@ -45,6 +47,8 @@ public class UsuarioSistema : BaseEntity
     public string? TipoUsuario { get; set; }
     public DateTime? FechaUltimoAcceso { get; set; }
     public string? FuenteOrigen { get; set; }
+    /// <summary>Cédula normalizada (sin guiones, trim, uppercase) — clave de cruce en controles</summary>
+    public string? CedulaNormalizada { get; set; }
 }
 
 /// <summary>
@@ -108,6 +112,8 @@ public class SnapshotEntraID
     /// <summary>Total de usuarios en esta instantánea</summary>
     public int TotalRegistros { get; set; }
     public string? CreadoPor { get; set; }
+    /// <summary>Origen del snapshot: GRAPH_DIRECT (sincronización automática) o MANUAL_EXCEL (carga por archivo)</summary>
+    public string Origen { get; set; } = "MANUAL_EXCEL";
     public ICollection<RegistroEntraID> Registros { get; set; } = [];
 }
 
@@ -134,6 +140,8 @@ public class RegistroEntraID
     public string? OfficeLocation { get; set; }
     public DateTime? CreatedDateTime { get; set; }
     public DateTime? LastSignInDateTime { get; set; }
+    /// <summary>EmployeeId normalizado (sin guiones, trim, uppercase) — clave de cruce con SAP/Nómina</summary>
+    public string? EmployeeIdNormalizado { get; set; }
 }
 
 /// <summary>
