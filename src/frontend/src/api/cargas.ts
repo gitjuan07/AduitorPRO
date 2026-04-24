@@ -153,6 +153,9 @@ export const cargasApi = {
     a.click();
     URL.revokeObjectURL(url);
   },
+
+  purgarCargasAntiguas: (): Promise<PurgarCargasResultado> =>
+    api.post('/cargas/purgar-antiguas').then(r => r.data),
 };
 
 export interface LoteCargaDto {
@@ -210,4 +213,10 @@ export interface SnapshotEntraIDDto {
   totalRegistros: number;
   creadoPor?: string;
   origen?: string;
+}
+
+export interface PurgarCargasResultado {
+  lotesBorrados: number;
+  registrosBorrados: number;
+  detallesPorTipo: Record<string, number>;
 }

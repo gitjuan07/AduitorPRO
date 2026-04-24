@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { cargasApi, type CargaResultado, type SnapshotEntraIDDto, type MatrizPuestoDto, type LoteCargaDto } from '../api/cargas';
+import { cargasApi, type CargaResultado, type SnapshotEntraIDDto, type MatrizPuestoDto, type LoteCargaDto, type PurgarCargasResultado } from '../api/cargas';
 import api from '../api/client';
 import { toast } from 'sonner';
 import {
   Upload, Download, FileSpreadsheet, Users, ShieldCheck,
   CheckCircle2, XCircle, AlertTriangle, RefreshCw, X, LayoutGrid, Briefcase,
   MonitorSmartphone, Calendar, Hash, DatabaseZap, Search, ChevronLeft, ChevronRight, Eye,
-  Building2, History, BadgeCheck, Clock, Zap
+  Building2, History, BadgeCheck, Clock, Zap, Trash2, AlertOctagon
 } from 'lucide-react';
 
 type TipoCarga = 'empleados' | 'sapRoles' | 'matrizPuestos' | 'casosSeSuite' | 'entraID';
@@ -493,6 +493,10 @@ export function Cargas() {
   const [syncLoading, setSyncLoading] = useState(false);
   const [recargarVisor, setRecargarVisor] = useState(0);
   const [recargarLotes, setRecargarLotes] = useState(0);
+  const [showPurgar, setShowPurgar] = useState(false);
+  const [purgarConfirm, setPurgarConfirm] = useState('');
+  const [purgarLoading, setPurgarLoading] = useState(false);
+  const [purgarResultado, setPurgarResultado] = useState<PurgarCargasResultado | null>(null);
   const [sociedadCodigo, setSociedadCodigo] = useState('');
   const [sociedades, setSociedades] = useState<SociedadOpcion[]>([]);
   const cfg = TIPO_CONFIG[tipo];
@@ -607,6 +611,22 @@ export function Cargas() {
       await fn();
     } catch {
       toast.error('Error al descargar la plantilla');
+    }
+  };
+
+  const handlePurgar = async () => {
+    if (purgarConfirm !== 'ELIMINAR') return;
+    setPurgarLoading(true);
+    try {
+      const res = await cargasApi.purgarCargasAntiguas();
+      setPurgarResultado(res);
+      setPurgarConfirm('');
+      setRecargarLotes(v => v + 1);
+      toast.success(`Purga completada: ${res.lotesBorrados} lotes y ${res.registrosBorrados} registros eliminados.`);
+    } catch {
+      toast.error('Error al purgar cargas antiguas.');
+    } finally {
+      setPurgarLoading(false);
     }
   };
 
@@ -897,6 +917,80 @@ export function Cargas() {
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Zona de mantenimiento ────────────────────────────────────────── */}
+      <div className="mt-10 pt-6 border-t border-gray-200">
+        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Mantenimiento de datos</h2>
+        <button
+          onClick={() => { setShowPurgar(true); setPurgarConfirm(''); setPurgarResultado(null); }}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition"
+        >
+          <Trash2 size={15} />
+          Purgar cargas antiguas
+        </button>
+        <p className="text-xs text-gray-400 mt-1.5">Elimina todos los lotes anteriores de cada tipo, conservando únicamente el más reciente.</p>
+      </div>
+
+      {/* ── Modal de confirmación purga ──────────────────────────────────── */}
+      {showPurgar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+            <div className="flex items-start gap-3 mb-4">
+              <AlertOctagon size={22} className="text-red-500 mt-0.5 shrink-0" />
+              <div>
+                <h3 className="font-semibold text-gray-900 text-base">Purgar cargas antiguas</h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  Se eliminarán permanentemente todos los lotes anteriores (Empleados, SAP, Matriz, SE Suite, Entra ID),
+                  conservando solo el más reciente de cada tipo. <strong>Esta acción no se puede deshacer.</strong>
+                </p>
+              </div>
+            </div>
+
+            {purgarResultado ? (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4 text-sm text-green-800">
+                <p className="font-semibold mb-1">Purga completada</p>
+                <p>{purgarResultado.lotesBorrados} lotes eliminados · {purgarResultado.registrosBorrados} registros eliminados</p>
+                {Object.entries(purgarResultado.detallesPorTipo).map(([tipo, n]) => (
+                  <p key={tipo} className="text-xs text-green-700 mt-0.5">{tipo}: {n} registros</p>
+                ))}
+              </div>
+            ) : (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Escribe <span className="font-mono font-bold text-red-600">ELIMINAR</span> para confirmar
+                </label>
+                <input
+                  type="text"
+                  value={purgarConfirm}
+                  onChange={e => setPurgarConfirm(e.target.value)}
+                  placeholder="ELIMINAR"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
+                  autoFocus
+                />
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowPurgar(false)}
+                className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition"
+              >
+                {purgarResultado ? 'Cerrar' : 'Cancelar'}
+              </button>
+              {!purgarResultado && (
+                <button
+                  onClick={handlePurgar}
+                  disabled={purgarConfirm !== 'ELIMINAR' || purgarLoading}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                >
+                  {purgarLoading ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                  {purgarLoading ? 'Eliminando…' : 'Eliminar cargas antiguas'}
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -117,3 +117,12 @@ public static class LoteHelper
         return lote;
     }
 }
+
+// ── Command: purgar cargas antiguas — conserva solo el lote más reciente por tipo ──
+public record PurgarCargasAntiguasCommand : IRequest<PurgarCargasResultado>;
+
+public record PurgarCargasResultado(
+    int LotesBorrados,
+    int RegistrosBorrados,
+    Dictionary<string, int> DetallesPorTipo
+);

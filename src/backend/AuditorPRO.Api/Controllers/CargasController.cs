@@ -545,6 +545,14 @@ public class CargasController : ControllerBase
 
         return Ok(resultado);
     }
+
+    [HttpPost("purgar-antiguas")]
+    [ProducesResponseType(typeof(PurgarCargasResultado), 200)]
+    public async Task<IActionResult> PurgarCargasAntiguas(CancellationToken ct)
+    {
+        var resultado = await _mediator.Send(new PurgarCargasAntiguasCommand(), ct);
+        return Ok(resultado);
+    }
 }
 
 public record SyncEntraIDRequest(string? NombreInstantanea);
