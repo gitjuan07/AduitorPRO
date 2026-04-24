@@ -51,6 +51,28 @@ public class SimulacionesController : ControllerBase
         return NoContent();
     }
 
+    [HttpPost("{id:guid}/ejecutar")]
+    [Authorize]
+    [ProducesResponseType(typeof(EjecutarSimulacionResult), 200)]
+    [ProducesResponseType(404)]
+    [ProducesResponseType(409)]
+    public async Task<IActionResult> Ejecutar(Guid id, CancellationToken ct)
+    {
+        try
+        {
+            var resultado = await _mediator.Send(new EjecutarSimulacionCommand(id), ct);
+            return Ok(resultado);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { error = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { error = ex.Message });
+        }
+    }
+
     /// <summary>
     /// Ejecuta el Motor de Control Cruzado (R01–R05) sobre los datos cargados
     /// y genera hallazgos automáticamente.

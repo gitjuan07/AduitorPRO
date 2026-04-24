@@ -352,12 +352,13 @@ public class MotorReglasService : IMotorReglasService
             .Select(u => new { u.NombreUsuario, u.Email, u.Cedula, u.CedulaNormalizada })
             .ToListAsync(ct);
 
-        // Cruzar por email (UPN) para detectar discrepancias de cédula
+        // Cruzar por email (UPN) — tomar primero en caso de UPNs duplicados
         var entraByEmail = registrosEntraID
             .Where(r => !string.IsNullOrWhiteSpace(r.UserPrincipalName))
+            .GroupBy(r => r.UserPrincipalName!.ToLowerInvariant())
             .ToDictionary(
-                r => r.UserPrincipalName!.ToLowerInvariant(),
-                r => r.EmployeeIdNormalizado ?? IdentityNormalizationHelper.NormalizarCedula(r.EmployeeId));
+                g => g.Key,
+                g => g.First().EmployeeIdNormalizado ?? IdentityNormalizationHelper.NormalizarCedula(g.First().EmployeeId));
 
         int inconsistentes = 0;
         foreach (var sap in sapUsers)

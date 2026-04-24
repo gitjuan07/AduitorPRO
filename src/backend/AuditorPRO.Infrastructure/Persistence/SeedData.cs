@@ -10,7 +10,11 @@ public static class SeedData
     {
         await SeedSociedadesAsync(db);
 
-        if (await db.Dominios.AnyAsync()) return;
+        if (await db.Dominios.AnyAsync())
+        {
+            await SeedControlsCruzadosAsync(db);
+            return;
+        }
 
         // ─────────────────────────────────────────────────────────────────────
         // DOMINIOS DE AUDITORÍA
@@ -26,8 +30,16 @@ public static class SeedData
             new DominioAuditoria { Id = 7, Codigo = "DOC", Nombre = "Documentación y Procedimientos", Descripcion = "Existencia, vigencia y actualización de políticas, manuales y procedimientos TI." },
         };
 
-        db.Dominios.AddRange(dominios);
-        await db.SaveChangesAsync();
+        var strategy = db.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
+        {
+            using var tx = await db.Database.BeginTransactionAsync();
+            await db.Database.ExecuteSqlRawAsync("SET IDENTITY_INSERT Dominios ON");
+            db.Dominios.AddRange(dominios);
+            await db.SaveChangesAsync();
+            await db.Database.ExecuteSqlRawAsync("SET IDENTITY_INSERT Dominios OFF");
+            await tx.CommitAsync();
+        });
 
         // ─────────────────────────────────────────────────────────────────────
         // PUNTOS DE CONTROL — Accesos e Identidad (ID)
@@ -357,8 +369,16 @@ public static class SeedData
             },
         };
 
-        db.PuntosControl.AddRange(controles);
-        await db.SaveChangesAsync();
+        var strategy2 = db.Database.CreateExecutionStrategy();
+        await strategy2.ExecuteAsync(async () =>
+        {
+            using var tx2 = await db.Database.BeginTransactionAsync();
+            await db.Database.ExecuteSqlRawAsync("SET IDENTITY_INSERT PuntosControl ON");
+            db.PuntosControl.AddRange(controles);
+            await db.SaveChangesAsync();
+            await db.Database.ExecuteSqlRawAsync("SET IDENTITY_INSERT PuntosControl OFF");
+            await tx2.CommitAsync();
+        });
 
         await SeedControlsCruzadosAsync(db);
     }
@@ -376,7 +396,11 @@ public static class SeedData
 
         if (codigosExistentes.Count >= 12) return;
 
-        var dominioId = 1; // Accesos e Identidad
+        var dominioId = await db.Dominios
+            .Where(d => d.Codigo == "ID")
+            .Select(d => d.Id)
+            .FirstOrDefaultAsync();
+        if (dominioId == 0) return;
 
         var nuevos = new List<PuntoControl>
         {
