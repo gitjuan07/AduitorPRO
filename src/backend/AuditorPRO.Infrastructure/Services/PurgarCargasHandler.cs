@@ -16,6 +16,7 @@ public class PurgarCargasAntiguasHandler : IRequestHandler<PurgarCargasAntiguasC
         int totalLotes = 0;
         int totalRegistros = 0;
 
+        // ── 1. Purgar LoteCarga antiguos por tipo ────────────────────────────
         var tipos = await _db.LotesCarga
             .Select(l => l.TipoCarga)
             .Distinct()
@@ -32,11 +33,33 @@ public class PurgarCargasAntiguasHandler : IRequestHandler<PurgarCargasAntiguasC
 
             var antiguos = lotes.Skip(1).ToList();
             var idsAntiguos = antiguos.Select(l => l.Id).ToHashSet();
+
+            // Nullear FK en FuenteDatoSimulacion antes de borrar el LoteCarga
+            var fuentes = await _db.FuentesDatosSimulacion
+                .Where(f => f.LoteCargaId != null && idsAntiguos.Contains(f.LoteCargaId!.Value))
+                .ToListAsync(ct);
+            foreach (var f in fuentes)
+                f.LoteCargaId = null;
+
             int registrosTipo = 0;
 
             switch (tipo)
             {
                 case "EMPLEADOS":
+                    // EmpleadoMaestro puede tener UsuarioSistema.EmpleadoId apuntando a él;
+                    // desvinculamos primero para evitar FK violation
+                    var empIds = await _db.Empleados
+                        .Where(e => e.LoteCargaId != null && idsAntiguos.Contains(e.LoteCargaId!.Value))
+                        .Select(e => e.Id)
+                        .ToListAsync(ct);
+                    if (empIds.Count > 0)
+                    {
+                        var usersRef = await _db.UsuariosSistema
+                            .Where(u => u.EmpleadoId != null && empIds.Contains(u.EmpleadoId!.Value))
+                            .ToListAsync(ct);
+                        foreach (var u in usersRef)
+                            u.EmpleadoId = null;
+                    }
                     var emp = await _db.Empleados
                         .Where(e => e.LoteCargaId != null && idsAntiguos.Contains(e.LoteCargaId!.Value))
                         .ToListAsync(ct);
@@ -45,8 +68,7 @@ public class PurgarCargasAntiguasHandler : IRequestHandler<PurgarCargasAntiguasC
                     break;
 
                 case "SAP_ROLES":
-                    // UsuarioSistema no tiene LoteCargaId — solo se eliminan los metadatos del lote
-                    // Los registros de usuario son actualizados in-place en cada carga
+                    // UsuarioSistema no tiene LoteCargaId — solo se limpian los metadatos del lote
                     break;
 
                 case "MATRIZ_PUESTOS":
@@ -64,39 +86,38 @@ public class PurgarCargasAntiguasHandler : IRequestHandler<PurgarCargasAntiguasC
                     _db.CasosSESuite.RemoveRange(cas);
                     registrosTipo = cas.Count;
                     break;
-
-                case "SNAPSHOT_ENTRAID":
-                    // SnapshotEntraID no usa LoteCargaId — sus IDs son los propios Guids
-                    var snapIds = await _db.SnapshotsEntraID
-                        .OrderByDescending(s => s.FechaInstantanea)
-                        .Skip(1)
-                        .Select(s => s.Id)
-                        .ToListAsync(ct);
-                    if (snapIds.Count > 0)
-                    {
-                        var regs = await _db.RegistrosEntraID
-                            .Where(r => snapIds.Contains(r.SnapshotId))
-                            .ToListAsync(ct);
-                        _db.RegistrosEntraID.RemoveRange(regs);
-                        registrosTipo = regs.Count;
-                        var snaps = await _db.SnapshotsEntraID
-                            .Where(s => snapIds.Contains(s.Id))
-                            .ToListAsync(ct);
-                        _db.SnapshotsEntraID.RemoveRange(snaps);
-                        // No suma a totalLotes aquí porque los snapshots no son LoteCarga
-                        totalLotes += snaps.Count;
-                    }
-                    // Saltar el bloque genérico de RemoveRange(antiguos) para este tipo
-                    totalRegistros += registrosTipo;
-                    if (registrosTipo > 0) detalles[tipo] = registrosTipo;
-                    continue;
             }
 
             _db.LotesCarga.RemoveRange(antiguos);
             totalLotes += antiguos.Count;
             totalRegistros += registrosTipo;
-            if (registrosTipo > 0 || antiguos.Count > 0)
-                detalles[tipo] = registrosTipo;
+            detalles[tipo] = registrosTipo;
+        }
+
+        // ── 2. Purgar SnapshotEntraID antiguos (no están en LotesCarga) ──────
+        var snapIdsAntiguas = await _db.SnapshotsEntraID
+            .OrderByDescending(s => s.FechaInstantanea)
+            .Skip(1)
+            .Select(s => s.Id)
+            .ToListAsync(ct);
+
+        if (snapIdsAntiguas.Count > 0)
+        {
+            // RegistrosEntraID tiene cascade desde SnapshotEntraID; los borramos explícitamente
+            var regsEntraid = await _db.RegistrosEntraID
+                .Where(r => snapIdsAntiguas.Contains(r.SnapshotId))
+                .ToListAsync(ct);
+            _db.RegistrosEntraID.RemoveRange(regsEntraid);
+
+            var snapsAntiguos = await _db.SnapshotsEntraID
+                .Where(s => snapIdsAntiguas.Contains(s.Id))
+                .ToListAsync(ct);
+            _db.SnapshotsEntraID.RemoveRange(snapsAntiguos);
+
+            int regsBorrados = regsEntraid.Count;
+            totalLotes += snapsAntiguos.Count;
+            totalRegistros += regsBorrados;
+            detalles["SNAPSHOT_ENTRAID"] = regsBorrados;
         }
 
         await _db.SaveChangesAsync(ct);
