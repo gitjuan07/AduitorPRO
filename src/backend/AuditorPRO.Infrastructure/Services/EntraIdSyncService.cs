@@ -3,6 +3,7 @@ using AuditorPRO.Domain.Interfaces;
 using AuditorPRO.Infrastructure.Helpers;
 using AuditorPRO.Infrastructure.Persistence;
 using Azure.Identity;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -16,17 +17,20 @@ public class EntraIdSyncService : IEntraIdSyncService
     private readonly AppDbContext _db;
     private readonly IConfiguration _config;
     private readonly ICurrentUserService _user;
+    private readonly IHttpContextAccessor _httpContext;
     private readonly ILogger<EntraIdSyncService> _logger;
 
     public EntraIdSyncService(
         AppDbContext db,
         IConfiguration config,
         ICurrentUserService user,
+        IHttpContextAccessor httpContext,
         ILogger<EntraIdSyncService> logger)
     {
         _db = db;
         _config = config;
         _user = user;
+        _httpContext = httpContext;
         _logger = logger;
     }
 
@@ -168,12 +172,28 @@ public class EntraIdSyncService : IEntraIdSyncService
 
     private GraphServiceClient BuildGraphClient()
     {
-        // DefaultAzureCredential: usa Managed Identity en Azure, az login en dev
+        var tenantId = _config["AzureAd:TenantId"]!;
+        var clientId = _config["AzureAd:ClientId"]!;
+        var clientSecret = _config["AzureAd:ClientSecret"];
+
+        // Intentar OBO con el token del usuario autenticado
+        var authHeader = _httpContext.HttpContext?.Request.Headers["Authorization"].ToString();
+        if (!string.IsNullOrWhiteSpace(clientSecret) && !string.IsNullOrWhiteSpace(authHeader)
+            && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        {
+            var userToken = authHeader["Bearer ".Length..].Trim();
+            _logger.LogInformation("Graph: usando On-Behalf-Of con token del usuario autenticado.");
+            var oboCredential = new OnBehalfOfCredential(
+                tenantId, clientId, clientSecret, userToken);
+            return new GraphServiceClient(oboCredential, ["https://graph.microsoft.com/.default"]);
+        }
+
+        // Fallback: Managed Identity (requiere permisos de aplicación concedidos por admin)
+        _logger.LogInformation("Graph: usando DefaultAzureCredential (Managed Identity).");
         var credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions
         {
             ExcludeInteractiveBrowserCredential = true,
         });
-
         return new GraphServiceClient(credential, ["https://graph.microsoft.com/.default"]);
     }
 
