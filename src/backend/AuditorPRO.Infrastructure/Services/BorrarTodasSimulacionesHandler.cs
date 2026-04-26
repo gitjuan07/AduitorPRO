@@ -23,18 +23,32 @@ public class BorrarTodasSimulacionesHandler : IRequestHandler<BorrarTodasSimulac
         _logger.LogInformation("BorrarTodas: {Total} simulaciones a borrar", total);
         if (total == 0) return 0;
 
-        // Orden respeta las FK: Evidencias → Hallazgos → ResultadosControl → FuentesDatosSimulacion → Simulaciones
-        await DeleteStep("Evidencias", ct);
-        await DeleteStep("Hallazgos", ct);
-        await DeleteStep("ResultadosControl", ct);
-        await DeleteStep("FuentesDatosSimulacion", ct);
-        await DeleteStep("Simulaciones", ct);
+        await _db.Database.ExecuteSqlRawAsync("ALTER TABLE [Evidencias] NOCHECK CONSTRAINT ALL", ct);
+        await _db.Database.ExecuteSqlRawAsync("ALTER TABLE [Hallazgos] NOCHECK CONSTRAINT ALL", ct);
+        await _db.Database.ExecuteSqlRawAsync("ALTER TABLE [ResultadosControl] NOCHECK CONSTRAINT ALL", ct);
+        await _db.Database.ExecuteSqlRawAsync("ALTER TABLE [FuentesDatosSimulacion] NOCHECK CONSTRAINT ALL", ct);
+
+        try
+        {
+            await ExecDelete("Evidencias", ct);
+            await ExecDelete("Hallazgos", ct);
+            await ExecDelete("ResultadosControl", ct);
+            await ExecDelete("FuentesDatosSimulacion", ct);
+            await ExecDelete("Simulaciones", ct);
+        }
+        finally
+        {
+            await _db.Database.ExecuteSqlRawAsync("ALTER TABLE [Evidencias] CHECK CONSTRAINT ALL", ct);
+            await _db.Database.ExecuteSqlRawAsync("ALTER TABLE [Hallazgos] CHECK CONSTRAINT ALL", ct);
+            await _db.Database.ExecuteSqlRawAsync("ALTER TABLE [ResultadosControl] CHECK CONSTRAINT ALL", ct);
+            await _db.Database.ExecuteSqlRawAsync("ALTER TABLE [FuentesDatosSimulacion] CHECK CONSTRAINT ALL", ct);
+        }
 
         _logger.LogInformation("BorrarTodas: completado OK");
         return total;
     }
 
-    private async Task DeleteStep(string tabla, CancellationToken ct)
+    private async Task ExecDelete(string tabla, CancellationToken ct)
     {
         try
         {
@@ -43,7 +57,7 @@ public class BorrarTodasSimulacionesHandler : IRequestHandler<BorrarTodasSimulac
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "ERROR al DELETE [{Tabla}]: {Msg} | Inner: {Inner}",
+            _logger.LogError(ex, "ERROR DELETE [{Tabla}]: {Msg} | Inner: {Inner}",
                 tabla, ex.Message, ex.InnerException?.Message);
             throw new Exception($"Fallo en DELETE [{tabla}]: {ex.InnerException?.Message ?? ex.Message}", ex);
         }
