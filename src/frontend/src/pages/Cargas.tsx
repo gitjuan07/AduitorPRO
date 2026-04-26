@@ -183,6 +183,18 @@ function ResultadoPanel({ resultado, onClose }: { resultado: CargaResultado; onC
           </div>
         ))}
       </div>
+      {resultado.advertencias?.length > 0 && (
+        <div className="bg-white rounded-lg border border-yellow-300 max-h-36 overflow-y-auto mb-2">
+          <div className="px-3 py-1.5 text-[11px] font-semibold text-yellow-700 bg-yellow-50 border-b border-yellow-200">
+            <AlertTriangle size={11} className="inline mr-1" />Advertencias ({resultado.advertencias.length})
+          </div>
+          {resultado.advertencias.map((w, i) => (
+            <div key={i} className={`px-3 py-1.5 text-xs text-yellow-800 ${i > 0 ? 'border-t border-yellow-100' : ''}`}>
+              {w}
+            </div>
+          ))}
+        </div>
+      )}
       {resultado.detalleErrores.length > 0 && (
         <div className="bg-white rounded-lg border border-red-200 max-h-36 overflow-y-auto">
           {resultado.detalleErrores.map((e, i) => (

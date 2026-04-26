@@ -18,9 +18,10 @@ const estadoColor: Record<string, string> = {
 };
 
 const TIPOS_CONTROL = [
-  { value: 'COMPLETO',     label: 'Completo (todas las reglas)' },
-  { value: 'SAP_NOMINA',   label: 'SAP ↔ Nómina' },
-  { value: 'SOD_ONLY',     label: 'Solo SoD (conflictos)' },
+  { value: 'COMPLETO',      label: 'Completo (todas las reglas)' },
+  { value: 'SAP_NOMINA',    label: 'SAP ↔ Nómina' },
+  { value: 'SAP_ENTRA_ID',  label: 'SAP ↔ Entra ID (Azure AD)' },
+  { value: 'SOD_ONLY',      label: 'Solo SoD (conflictos)' },
 ];
 
 export function Simulaciones() {
@@ -230,9 +231,13 @@ export function Simulaciones() {
                   { id: 'R03', label: 'Rol fuera de Matriz de Puestos sin caso SE Suite vigente' },
                   { id: 'R04', label: 'Caso SE Suite vencido — acceso no renovado' },
                   { id: 'R05', label: 'Empleado activo sin cuenta SAP vinculada por cédula' },
+                  { id: 'R06', label: 'Usuario SAP activo con Entra ID deshabilitado' },
+                  { id: 'R07', label: 'Ex-empleado con cuenta Entra ID habilitada' },
+                  { id: 'R08', label: 'Empleado activo sin cuenta en Entra ID' },
                 ].filter(r => tipoControl === 'COMPLETO' ||
-                  (tipoControl === 'SAP_NOMINA' && ['R01','R03','R04','R05'].includes(r.id)) ||
-                  (tipoControl === 'SOD_ONLY' && r.id === 'R02')
+                  (tipoControl === 'SAP_NOMINA'   && ['R01','R03','R04','R05'].includes(r.id)) ||
+                  (tipoControl === 'SAP_ENTRA_ID' && ['R06','R07','R08'].includes(r.id)) ||
+                  (tipoControl === 'SOD_ONLY'     && r.id === 'R02')
                 ).map(r => (
                   <div key={r.id} className="flex items-center gap-2 text-xs text-violet-800">
                     <span className="font-mono bg-violet-200 px-1.5 py-0.5 rounded text-violet-700">{r.id}</span>

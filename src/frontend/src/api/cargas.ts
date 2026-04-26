@@ -6,6 +6,7 @@ export interface CargaResultado {
   actualizados: number;
   errores: number;
   detalleErrores: string[];
+  advertencias?: string[];
 }
 
 export const cargasApi = {
