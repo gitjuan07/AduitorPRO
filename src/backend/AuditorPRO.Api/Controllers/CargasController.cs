@@ -17,6 +17,39 @@ public class CargasController : ControllerBase
 
     // ── Lotes de carga ────────────────────────────────────────────────────────
 
+    // ── Visores de datos ──────────────────────────────────────────────────────
+
+    [HttpGet("empleados")]
+    public async Task<IActionResult> GetEmpleados(
+        [FromQuery] string? q, [FromQuery] string? estado,
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 50,
+        CancellationToken ct = default)
+        => Ok(await _mediator.Send(new GetEmpleadosVisorQuery(q, estado, page, pageSize), ct));
+
+    [HttpGet("sap-usuarios")]
+    public async Task<IActionResult> GetUsuariosSAP(
+        [FromQuery] string? q, [FromQuery] string? estado,
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 50,
+        CancellationToken ct = default)
+        => Ok(await _mediator.Send(new GetUsuariosSAPVisorQuery(q, estado, page, pageSize), ct));
+
+    [HttpGet("casos-sesuite-data")]
+    public async Task<IActionResult> GetCasosSESuite(
+        [FromQuery] string? q, [FromQuery] string? estado,
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 50,
+        CancellationToken ct = default)
+        => Ok(await _mediator.Send(new GetCasosSESuiteVisorQuery(q, estado, page, pageSize), ct));
+
+    [HttpGet("snapshot-entraid/{id:guid}/registros")]
+    public async Task<IActionResult> GetRegistrosEntraID(
+        Guid id,
+        [FromQuery] string? q, [FromQuery] bool? accountEnabled,
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 50,
+        CancellationToken ct = default)
+        => Ok(await _mediator.Send(new GetRegistrosEntraIDVisorQuery(id, q, accountEnabled, page, pageSize), ct));
+
+    // ─────────────────────────────────────────────────────────────────────────
+
     [HttpGet("lotes")]
     [AllowAnonymous]
     public async Task<IActionResult> GetLotes(

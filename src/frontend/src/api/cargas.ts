@@ -156,6 +156,19 @@ export const cargasApi = {
 
   purgarCargasAntiguas: (): Promise<PurgarCargasResultado> =>
     api.post('/cargas/purgar-antiguas').then(r => r.data),
+
+  // ── Visores de datos ───────────────────────────────────────────────────────
+  getEmpleados: (params: { q?: string; estado?: string; page?: number; pageSize?: number }) =>
+    api.get('/cargas/empleados', { params }).then(r => r.data as PagedVisor<EmpleadoVisorDto>),
+
+  getUsuariosSAP: (params: { q?: string; estado?: string; page?: number; pageSize?: number }) =>
+    api.get('/cargas/sap-usuarios', { params }).then(r => r.data as PagedVisor<UsuarioSAPVisorDto>),
+
+  getCasosSESuite: (params: { q?: string; estado?: string; page?: number; pageSize?: number }) =>
+    api.get('/cargas/casos-sesuite-data', { params }).then(r => r.data as PagedVisor<CasoVisorDto>),
+
+  getRegistrosEntraID: (snapshotId: string, params: { q?: string; accountEnabled?: boolean; page?: number; pageSize?: number }) =>
+    api.get(`/cargas/snapshot-entraid/${snapshotId}/registros`, { params }).then(r => r.data as PagedVisor<RegistroEntraIDVisorDto>),
 };
 
 export interface LoteCargaDto {
@@ -219,4 +232,27 @@ export interface PurgarCargasResultado {
   lotesBorrados: number;
   registrosBorrados: number;
   detallesPorTipo: Record<string, number>;
+}
+
+export interface PagedVisor<T> { total: number; page: number; pageSize: number; items: T[]; }
+
+export interface EmpleadoVisorDto {
+  numeroEmpleado: string; cedula?: string; nombreCompleto: string;
+  correoCorporativo?: string; estadoLaboral: string;
+  fechaIngreso?: string; fechaBaja?: string;
+}
+export interface UsuarioSAPVisorDto {
+  nombreUsuario: string; cedula?: string; nombreCompleto?: string;
+  sociedad?: string; departamento?: string; puesto?: string;
+  email?: string; estado: string; tipoUsuario?: string; ultimoAcceso?: string;
+}
+export interface CasoVisorDto {
+  numeroCaso: string; titulo?: string; usuarioSAP?: string; cedula?: string;
+  rolJustificado?: string; fechaAprobacion?: string; fechaVencimiento?: string;
+  estadoCaso: string; aprobador?: string;
+}
+export interface RegistroEntraIDVisorDto {
+  employeeId?: string; displayName?: string; userPrincipalName?: string;
+  email?: string; department?: string; jobTitle?: string;
+  accountEnabled: boolean; manager?: string; ultimoSignIn?: string;
 }
