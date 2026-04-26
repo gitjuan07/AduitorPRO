@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   getSimulaciones, iniciarSimulacion, cancelarSimulacion,
-  ejecutarControlCruzado,
+  ejecutarControlCruzado, borrarTodasSimulaciones,
   type SimulacionListDto, type ControlCruzadoResultado
 } from '../api/simulaciones';
 import { toast } from 'sonner';
-import { PlayCircle, XCircle, ChevronRight, ShieldAlert, RefreshCw, X, FileSearch } from 'lucide-react';
+import { PlayCircle, XCircle, ChevronRight, ShieldAlert, RefreshCw, X, FileSearch, Trash2 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 
 const estadoColor: Record<string, string> = {
@@ -31,6 +31,9 @@ export function Simulaciones() {
   const [showControlModal, setShowControlModal] = useState<string | null>(null);
   const [controlResultado, setControlResultado] = useState<ControlCruzadoResultado | null>(null);
   const [objetivo, setObjetivo] = useState('');
+  const [showBorrar, setShowBorrar] = useState(false);
+  const [borrarConfirm, setBorrarConfirm] = useState('');
+  const [borrarLoading, setBorrarLoading] = useState(false);
   const [tipoControl, setTipoControl] = useState<string>('COMPLETO');
   const hoy = new Date().toISOString().split('T')[0];
   const nombreSugerido = (() => {
@@ -80,6 +83,23 @@ export function Simulaciones() {
     }
   };
 
+  const handleBorrarTodas = async () => {
+    if (borrarConfirm !== 'ELIMINAR') return;
+    setBorrarLoading(true);
+    try {
+      const { borradas } = await borrarTodasSimulaciones();
+      toast.success(`${borradas} simulación${borradas !== 1 ? 'es' : ''} eliminada${borradas !== 1 ? 's' : ''}`);
+      setShowBorrar(false);
+      setBorrarConfirm('');
+      load();
+    } catch (err: unknown) {
+      const data = (err as { response?: { data?: { error?: string; detalle?: string } } })?.response?.data;
+      toast.error(data?.detalle ?? data?.error ?? 'Error al borrar las simulaciones', { duration: 10000 });
+    } finally {
+      setBorrarLoading(false);
+    }
+  };
+
   const abrirControlModal = (id: string) => {
     setShowControlModal(id);
     setControlResultado(null);
@@ -115,13 +135,22 @@ export function Simulaciones() {
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-gray-900">Simulaciones de Auditoría</h2>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition"
-        >
-          <PlayCircle size={16} />
-          Nueva Simulación
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => { setShowBorrar(true); setBorrarConfirm(''); }}
+            className="flex items-center gap-2 bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-lg text-sm hover:bg-red-100 transition"
+          >
+            <Trash2 size={16} />
+            Borrar todas
+          </button>
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition"
+          >
+            <PlayCircle size={16} />
+            Nueva Simulación
+          </button>
+        </div>
       </div>
 
       {showForm && (
@@ -267,6 +296,53 @@ export function Simulaciones() {
               <button onClick={() => setShowControlModal(null)}
                 className="border px-4 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
                 Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Borrar todas */}
+      {showBorrar && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <div className="flex items-center gap-2">
+                <Trash2 size={20} className="text-red-600" />
+                <h3 className="font-semibold text-gray-800">Borrar todas las simulaciones</h3>
+              </div>
+              <button onClick={() => setShowBorrar(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-gray-700">
+                Esta acción eliminará <span className="font-semibold text-red-600">todas las simulaciones</span>,
+                junto con sus hallazgos, evidencias y resultados de control. Esta operación es irreversible.
+              </p>
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">
+                  Escribe <span className="font-mono font-bold text-red-600">ELIMINAR</span> para confirmar
+                </label>
+                <input
+                  type="text"
+                  value={borrarConfirm}
+                  onChange={e => setBorrarConfirm(e.target.value)}
+                  placeholder="ELIMINAR"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                />
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t flex gap-3">
+              <button
+                onClick={handleBorrarTodas}
+                disabled={borrarConfirm !== 'ELIMINAR' || borrarLoading}
+                className="flex items-center gap-2 bg-red-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-40 transition"
+              >
+                {borrarLoading ? <><RefreshCw size={14} className="animate-spin" /> Borrando...</> : <><Trash2 size={14} /> Eliminar todo</>}
+              </button>
+              <button onClick={() => setShowBorrar(false)} className="border px-4 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                Cancelar
               </button>
             </div>
           </div>

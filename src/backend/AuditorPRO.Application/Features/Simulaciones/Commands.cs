@@ -96,6 +96,8 @@ public class CancelarSimulacionHandler : IRequestHandler<CancelarSimulacionComma
     }
 }
 
+public record BorrarTodasSimulacionesCommand : IRequest<int>;
+
 // ─── Motor de Control Cruzado ─────────────────────────────────────────────────
 // Ejecuta las reglas R01–R08 sobre los datos cargados y genera Hallazgos
 

@@ -82,3 +82,6 @@ export const ejecutarControlCruzado = (
   data: ControlCruzadoRequest
 ): Promise<ControlCruzadoResultado> =>
   api.post(`/simulaciones/${id}/ejecutar-control-cruzado`, data).then((r) => r.data);
+
+export const borrarTodasSimulaciones = (): Promise<{ borradas: number }> =>
+  api.delete('/simulaciones/todas').then((r) => r.data);

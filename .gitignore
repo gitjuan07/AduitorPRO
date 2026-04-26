@@ -1,4 +1,4 @@
-# .NET
+# .NET build output
 bin/
 obj/
 *.user
@@ -13,8 +13,14 @@ dist/
 .env
 .env.local
 .env.*.local
+*.tsbuildinfo
 
-# Azure
+# Databases & local dev
+*.db
+*.db-shm
+*.db-wal
+
+# Azure / Deploy
 .azure/
 *.pubxml
 *.pubxml.user
@@ -26,4 +32,39 @@ dist/
 
 # Packages
 *.nupkg
-plantillas-generadas/
+*.docx
+
+# Archivos sueltos de sesiones anteriores en la raíz (ya organizados en src/)
+/AuditorTI/
+/*.cs
+/*.tsx
+/*.ts
+/*.sql
+/*.json
+/*.md
+/*.bicep
+/*.config.js
+/*.config.ts
+/eslint.config.*
+/postcss.config.*
+/tailwind.config.*
+/vite.config.*
+/tsconfig.*
+/package.json
+/package-lock.json
+index.html
+index.css
+favicon.*
+hero.png
+vite.svg
+"Logo sin fondo.png"
+"README (17).md"
+"download (16)"
+"Commands (*.cs"
+"Queries (*.cs"
+launchSettings.json
+env.example
+env.production
+staticwebapp.config.json
+main.bicep
+auditorpro_dev.db

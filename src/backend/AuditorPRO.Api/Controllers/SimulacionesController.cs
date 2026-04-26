@@ -73,10 +73,22 @@ public class SimulacionesController : ControllerBase
         }
     }
 
-    /// <summary>
-    /// Ejecuta el Motor de Control Cruzado (R01–R05) sobre los datos cargados
-    /// y genera hallazgos automáticamente.
-    /// </summary>
+    [HttpDelete("todas")]
+    [Authorize]
+    [ProducesResponseType(200)]
+    public async Task<IActionResult> BorrarTodas(CancellationToken ct)
+    {
+        try
+        {
+            var borradas = await _mediator.Send(new BorrarTodasSimulacionesCommand(), ct);
+            return Ok(new { borradas });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = ex.Message, detalle = ex.InnerException?.Message });
+        }
+    }
+
     [HttpPost("{id:guid}/ejecutar-control-cruzado")]
     [Authorize]
     [ProducesResponseType(typeof(ControlCruzadoResultado), 200)]
